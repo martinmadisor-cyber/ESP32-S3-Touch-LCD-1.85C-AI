@@ -9,6 +9,7 @@
 #include "MP3PlayerScreen.h"
 #include "AlarmScreen.h"
 #include "AssistantScreen.h"
+#include "RecorderScreen.h"
 #include "ClockScreen.h"
 #include "SourceScreen.h"
 #include "ConfigScreen.h"
@@ -22,6 +23,7 @@
 ├── GUI.cpp                     - Common init, message queue, shared objects
 ├── AlarmScreen.cpp             - GUI_CreateAlarmScreen()
 ├── AssistantScreen.cpp         - GUI_CreateAssistantScreen()
+├── RecorderScreen.cpp          - GUI_CreateRecorderScreen()
 ├── ClockScreen.cpp             - GUI_CreateClockScreen()
 ├── ConfigScreen.cpp            - GUI_CreateConfigScreen()
 ├── InternetRadioScreen.cpp     - GUI_CreateInternetRadioScreen()
@@ -87,6 +89,7 @@ extern lv_obj_t* sdcard_mp3_screen;
 extern lv_obj_t* alarm_screen;
 extern lv_obj_t* alarm_screen_edit;
 extern lv_obj_t* assistant_screen;
+extern lv_obj_t* recorder_screen;
 extern lv_obj_t* clock_screen;
 extern lv_obj_t* wifi_info_screen;
 extern lv_obj_t* wifi_discovery_screen;
@@ -102,6 +105,7 @@ typedef enum {
     SCREEN_ALARM, // For Alarm screen
     SCREEN_CLOCK, // For Clock screen
     SCREEN_ASSISTANT, // For Assistant screen
+    SCREEN_RECORDER, // For Recorder screen
     SCREEN_WIFI_INFO, // For WiFi information
     SCREEN_WIFI_DISCOVERY,  // For WiFi discovery
     SCREEN_WIFI_PASSWORD    // For WiFi password entry

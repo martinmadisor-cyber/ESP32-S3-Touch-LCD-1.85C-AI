@@ -3,6 +3,44 @@
 #include "PCM5101.h"
 #include "MIC_MSM.h" 
 
+// --- VU Meter Widget Implementation ---
+
+static lv_obj_t* vu_left_bar = nullptr;
+static lv_obj_t* vu_right_bar = nullptr;
+static lv_style_t style_vu_indic;
+
+void GUI_CreateVUMeter(lv_obj_t* parent) {
+    // Initialize style only once
+    lv_style_init(&style_vu_indic);
+    lv_style_set_bg_opa(&style_vu_indic, LV_OPA_COVER);
+    lv_style_set_bg_color(&style_vu_indic, lv_palette_main(LV_PALETTE_RED));     // bottom
+    lv_style_set_bg_grad_color(&style_vu_indic, lv_palette_main(LV_PALETTE_GREEN)); // top
+    lv_style_set_bg_grad_dir(&style_vu_indic, LV_GRAD_DIR_VER);
+    lv_style_set_bg_grad_stop(&style_vu_indic, 128); // midpoint for yellow (optional)
+
+    // Left bar
+    vu_left_bar = lv_bar_create(parent);
+    lv_obj_set_size(vu_left_bar, 16, 70);
+    lv_obj_set_pos(vu_left_bar, 165, 165);
+    lv_bar_set_range(vu_left_bar, 0, 127);
+    lv_obj_add_style(vu_left_bar, &style_vu_indic, LV_PART_INDICATOR);
+
+    // Right bar
+    vu_right_bar = lv_bar_create(parent);
+    lv_obj_set_size(vu_right_bar, 16, 70);
+    lv_obj_set_pos(vu_right_bar, 185, 165);
+    lv_bar_set_range(vu_right_bar, 0, 127);
+    lv_obj_add_style(vu_right_bar, &style_vu_indic, LV_PART_INDICATOR);
+}
+
+void GUI_UpdateVUMeter() {
+    if (!vu_left_bar || !vu_right_bar || !audio_ptr) return;
+    uint16_t vu = audio_ptr->getVUlevel();
+    uint8_t left  = vu >> 8;
+    uint8_t right = vu & 0xFF;
+    lv_bar_set_value(vu_left_bar, left, LV_ANIM_OFF);
+    lv_bar_set_value(vu_right_bar, right, LV_ANIM_OFF);
+}
 
 void GUI_CreateMainScreen() {
     if (main_screen) return;
@@ -49,25 +87,25 @@ void GUI_CreateMainScreen() {
     lv_obj_align(message_label, LV_ALIGN_CENTER, 0, -40);
 
     // --- Pause Button ---
-    lv_obj_t* btn_pause = lv_button_create(main_screen);
-    lv_obj_add_style(btn_pause, &style_btn, 0);
-    lv_obj_add_style(btn_pause, &style_btn_pressed, LV_STATE_PRESSED);
-    lv_obj_set_size(btn_pause, 60, 60);
-    lv_obj_set_pos(btn_pause, 190, 180);
-    lv_obj_add_event_cb(btn_pause, [](lv_event_t* e) {
-        if (audio_ptr) audio_ptr->pauseResume();
-        GUI_ClearMessage();
-    }, LV_EVENT_CLICKED, nullptr);
-    lv_obj_set_style_radius(btn_pause, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_image_src(btn_pause, LV_SYMBOL_PAUSE, 0);
-    lv_obj_set_style_text_font(btn_pause, lv_theme_get_font_large(btn_pause), 0);
+    // lv_obj_t* btn_pause = lv_button_create(main_screen);
+    // lv_obj_add_style(btn_pause, &style_btn, 0);
+    // lv_obj_add_style(btn_pause, &style_btn_pressed, LV_STATE_PRESSED);
+    // lv_obj_set_size(btn_pause, 60, 60);
+    // lv_obj_set_pos(btn_pause, 190, 180);
+    // lv_obj_add_event_cb(btn_pause, [](lv_event_t* e) {
+    //     if (audio_ptr) audio_ptr->pauseResume();
+    //     GUI_ClearMessage();
+    // }, LV_EVENT_CLICKED, nullptr);
+    // lv_obj_set_style_radius(btn_pause, LV_RADIUS_CIRCLE, 0);
+    // lv_obj_set_style_bg_image_src(btn_pause, LV_SYMBOL_PAUSE, 0);
+    // lv_obj_set_style_text_font(btn_pause, lv_theme_get_font_large(btn_pause), 0);
 
     // --- Stop Button ---
     lv_obj_t* btn_stop = lv_button_create(main_screen);
     lv_obj_add_style(btn_stop, &style_btn, 0);
     lv_obj_add_style(btn_stop, &style_btn_pressed, LV_STATE_PRESSED);
     lv_obj_set_size(btn_stop, 90, 90);
-    lv_obj_set_pos(btn_stop, 260, 160);
+    lv_obj_set_pos(btn_stop, 235, 160);
     lv_obj_add_event_cb(btn_stop, [](lv_event_t* e) {
         if (audio_ptr) audio_ptr->stopSong();
         GUI_ClearMessage();
@@ -135,6 +173,9 @@ void GUI_CreateMainScreen() {
     lv_label_set_text(label_alarm, "Alarm");
     lv_obj_center(label_alarm);
     Serial.println("GUI_CreateMainScreen created");
+
+    // --- VU Meter ---
+    GUI_CreateVUMeter(main_screen);
 }
 
 void GUI_UpdateMainScreen(const struct tm& rtcTime) {
@@ -169,4 +210,5 @@ void GUI_UpdateMainScreen(const struct tm& rtcTime) {
             lv_obj_set_style_text_color(backend_status, lv_color_hex(0xff0000), 0);
         }
     }
+    GUI_UpdateVUMeter();
 }

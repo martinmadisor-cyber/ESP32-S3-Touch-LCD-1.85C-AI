@@ -1,4 +1,5 @@
 #include "MIC_MSM.h"
+#include "HttpServer.h" 
 // English wakeword : Hi ESP！！！！
 
 #include "esp_dsp.h"
@@ -15,7 +16,7 @@ I2SClass i2s;
 static TaskHandle_t micTaskHandle = nullptr;
 static File wavFile;
 static volatile bool isRecording = false;
-static bool streamToServer = false;  // Stream to server via WebSocket or save to SD card file
+//static bool streamToServer = false;  // Stream to server via WebSocket or save to SD card file
 
 static uint32_t sampleRate;
 static uint8_t channels;
@@ -228,6 +229,10 @@ static void finalizeWavFile(File &file) {
 // Clean I2S shutdown
 
 static void MIC_RecordTask(void *parameter) {
+    MicTaskParams* cfg = (MicTaskParams*)parameter;
+    mic_mode_t mode = cfg->mode;
+    vPortFree(cfg);
+
     int32_t rawBuffer[256];           // 32-bit input from ICS-43434
     float floatSamples[256];          // Float samples for DSP
     float filtered[256];              // Filtered output
@@ -236,13 +241,13 @@ static void MIC_RecordTask(void *parameter) {
     Serial.println("[MIC] Recording task with bandpass + AGC started");
 
     // Band-pass filter setup (ESP-DSP biquad IIR)
-    float coeffs[5];
-    float w[2] = {0};
-    const float fs = (float)sampleRate;
-    const float f0 = 1000.0f;  // Center frequency
-    const float Q = 0.707f;    // Quality factor
+    // float coeffs[5];
+    // float w[2] = {0};
+    // const float fs = (float)sampleRate;
+    // const float f0 = 1000.0f;  // Center frequency
+    // const float Q = 0.707f;    // Quality factor
 
-    dsps_biquad_gen_bpf_f32(coeffs, f0 / fs, Q);
+    // dsps_biquad_gen_bpf_f32(coeffs, f0 / fs, Q);
 
     // AGC parameters
     float targetLevel = 8000.0f;
@@ -265,11 +270,14 @@ static void MIC_RecordTask(void *parameter) {
 
         // Convert to float (assuming 24-bit left-justified in 32-bit)
         for (size_t i = 0; i < sampleCount; ++i) {
-            floatSamples[i] = (float)(rawBuffer[i] >> 8);
+            floatSamples[i] = (float)(rawBuffer[i] >> 16);
         }
+       
+        //copy floatSamples to filtered as initial
+        memcpy(filtered, floatSamples, sampleCount * sizeof(float));
 
         // Apply band-pass filter
-        dsps_biquad_f32(floatSamples, filtered, sampleCount, coeffs, w);
+        // dsps_biquad_f32(floatSamples, filtered, sampleCount, coeffs, w);
 
         // Estimate RMS for AGC
         float sumSquares = 0.0f;
@@ -298,39 +306,58 @@ static void MIC_RecordTask(void *parameter) {
             finalSamples[i] = (int16_t)s;
         }
 
-        if (streamToServer) {
-            // Send to WebSocket queue or buffer here
-            AIAssistant_SendAudioChunk(finalSamples, sampleCount * sizeof(int16_t));
+        // MODE-SPECIFIC HANDLING
+        switch (mode) {
+          case MIC_MODE_TO_AI_CLIENT:
+            AIAssistant_SendAudioChunk(finalSamples,
+                                       sampleCount * sizeof(int16_t));
+            break;
 
-            /*
-            // Check if adding the new samples would overflow the buffer
-            if (streamOffset + sampleCount >= 1024) {
-                // Fill up remaining space
-                size_t spaceLeft = 1024 - streamOffset;
-                memcpy(&streamBuffer[streamOffset], finalSamples, spaceLeft * sizeof(int16_t));
+          case MIC_MODE_TO_FILE:
+            wavFile.write((uint8_t *)finalSamples,
+                          sampleCount * sizeof(int16_t));
+            break;
 
-                // Send full buffer
-                AIAssistant_SendAudioChunk(streamBuffer, 1024 * sizeof(int16_t));
-                totalSize += 1024 * sizeof(int16_t);
-                streamOffset = 0;
-
-                // Copy remaining samples to start of buffer
-                size_t remaining = sampleCount - spaceLeft;
-                if (remaining > 0) {
-                    memcpy(&streamBuffer[streamOffset], &finalSamples[spaceLeft], remaining * sizeof(int16_t));
-                    streamOffset += remaining;
-                }
-            } else {
-                // Enough space, just copy in
-                memcpy(&streamBuffer[streamOffset], finalSamples, sampleCount * sizeof(int16_t));
-                streamOffset += sampleCount;
-            }
-            */
-
-        } else {
-            // Write to WAV file on SD card
-            wavFile.write((uint8_t *)finalSamples, sampleCount * sizeof(int16_t));
+          case MIC_MODE_TO_WS_SERVER:
+            // New “server” mode: send to walkie-talkie WebSocket
+            wsSendAudioChunk(finalSamples,
+                                        sampleCount * sizeof(int16_t));
+            break;
         }
+
+        // if (streamToServer) {
+        //     // Send to WebSocket queue or buffer here
+        //     AIAssistant_SendAudioChunk(finalSamples, sampleCount * sizeof(int16_t));
+
+        //     /*
+        //     // Check if adding the new samples would overflow the buffer
+        //     if (streamOffset + sampleCount >= 1024) {
+        //         // Fill up remaining space
+        //         size_t spaceLeft = 1024 - streamOffset;
+        //         memcpy(&streamBuffer[streamOffset], finalSamples, spaceLeft * sizeof(int16_t));
+
+        //         // Send full buffer
+        //         AIAssistant_SendAudioChunk(streamBuffer, 1024 * sizeof(int16_t));
+        //         totalSize += 1024 * sizeof(int16_t);
+        //         streamOffset = 0;
+
+        //         // Copy remaining samples to start of buffer
+        //         size_t remaining = sampleCount - spaceLeft;
+        //         if (remaining > 0) {
+        //             memcpy(&streamBuffer[streamOffset], &finalSamples[spaceLeft], remaining * sizeof(int16_t));
+        //             streamOffset += remaining;
+        //         }
+        //     } else {
+        //         // Enough space, just copy in
+        //         memcpy(&streamBuffer[streamOffset], finalSamples, sampleCount * sizeof(int16_t));
+        //         streamOffset += sampleCount;
+        //     }
+        //     */
+
+        // } else {
+        //     // Write to WAV file on SD card
+        //     wavFile.write((uint8_t *)finalSamples, sampleCount * sizeof(int16_t));
+        // }
 
         totalSize += sampleCount * sizeof(int16_t);
         Serial.printf("[AGC] RMS: %.1f, Gain: %.2f\n", rms, agcGain);
@@ -340,34 +367,54 @@ static void MIC_RecordTask(void *parameter) {
     // heap_caps_free(streamBuffer);
 
     i2s.end();
-    delay(50);
-    i2s.~I2SClass();
-    new (&i2s) I2SClass();
+    // delay(50);
+    // i2s.~I2SClass();
+    // new (&i2s) I2SClass();
 
     Serial.printf("[MIC] Recording task ended, %d bytes\n", totalSize);
 
+    // Mode-specific finalization
+    switch (mode) {
+      case MIC_MODE_TO_AI_CLIENT:
+        AIAssistant_StopStream();
+        break;
+
+      case MIC_MODE_TO_FILE:
+        finalizeWavFile(wavFile);
+        wavFile.flush();
+        wavFile.close();
+        break;
+
+      case MIC_MODE_TO_WS_SERVER:
+        // Optionally: notify WebSocket clients that mic stopped
+        // e.g. WalkieTalkie_StopStream();
+        break;
+    }
+
+    /*
     if (streamToServer) {
         // Flush buffer
-        /*
-        if (streamOffset > 0) {
-            AIAssistant_SendAudioChunk(streamBuffer, streamOffset * sizeof(int16_t));
-            totalSize += streamOffset * sizeof(int16_t);
-            streamOffset = 0;
-        }*/
+        
+        //if (streamOffset > 0) {
+        //    AIAssistant_SendAudioChunk(streamBuffer, streamOffset * sizeof(int16_t));
+         //   totalSize += streamOffset * sizeof(int16_t);
+        //    streamOffset = 0;
+        //}
         AIAssistant_StopStream();
     } else {
       finalizeWavFile(wavFile);
       wavFile.flush();
       wavFile.close();
     }
+    */
     delay(200);
     vTaskDelete(nullptr);
 }
 
-
 // Start recording audio from the microphone
+/*
 void MIC_StartRecording(const char* filename, uint32_t rate, uint8_t ch, uint16_t bits, bool stream) {
-  //  filename.c_str(), 16000 /*bitRate*/, 1 /*chanels*/, 16 /*bits*/);
+  //  filename.c_str(), 16000 /bitRate/, 1 /chanels/, 16 /bits/);
   if (isRecording) return;
 
   streamToServer = stream;
@@ -378,7 +425,7 @@ void MIC_StartRecording(const char* filename, uint32_t rate, uint8_t ch, uint16_
   i2s.setPins(I2S_PIN_BCK, I2S_PIN_WS, I2S_PIN_DOUT, I2S_PIN_DIN);  // Only DOUT or DIN needed
   i2s.setTimeout(1000);  // Optional, useful for .readBytes()
 
-  // Select 32bit data format, Mono, right channel
+  // Mic outputs 32-bit data format, Mono, Right Channel only
   if (!i2s.begin(I2S_MODE_STD, rate, I2S_DATA_BIT_WIDTH_32BIT, I2S_SLOT_MODE_MONO, I2S_STD_SLOT_RIGHT)) {
     Serial.println("[ERR] I2S begin() failed");
     return;
@@ -434,6 +481,97 @@ void MIC_StartRecording(const char* filename, uint32_t rate, uint8_t ch, uint16_
   if (result != pdPASS) {
     Serial.println("[ERR] Failed to start MIC_RecordTask");
     wavFile.close();
+    isRecording = false;
+  }
+}
+*/
+void MIC_StartRecording(const char* filename,
+                        uint32_t rate,
+                        uint8_t ch,
+                        uint16_t bits,
+                        mic_mode_t mode) {
+  if (isRecording) return;
+
+  sampleRate   = rate;
+  channels     = ch;
+  bitsPerSample = bits;
+
+  Serial.printf("[MIC] Starting recording: %s at %luHz, %dch, %dbit, mode:%d\n",
+                filename, rate, ch, bits, (int)mode);
+
+  // Configure and start ESP_I2S
+  i2s.setPins(I2S_PIN_BCK, I2S_PIN_WS, I2S_PIN_DOUT, I2S_PIN_DIN);
+  i2s.setTimeout(1000);
+
+  // Mic outputs 32-bit data format, Mono, Right Channel only
+  if (!i2s.begin(I2S_MODE_STD, rate, I2S_DATA_BIT_WIDTH_32BIT,
+                 I2S_SLOT_MODE_MONO, I2S_STD_SLOT_RIGHT)) {
+    Serial.println("[ERR] I2S begin() failed");
+    return;
+  }
+
+  // Mode-specific setup
+  switch (mode) {
+    case MIC_MODE_TO_AI_CLIENT:
+      // Existing behaviour: stream to AI server
+      AIAssistant_StartStream();
+      Serial.println("[MIC] AI client streaming via websocket");
+      break;
+
+    case MIC_MODE_TO_FILE: {
+      if (!SD_MMC.begin()) {
+        Serial.println("[ERR] SD_MMC mount failed");
+        i2s.end();
+        return;
+      }
+
+      SD_MMC.remove(filename);
+      wavFile = SD_MMC.open(filename, FILE_WRITE);
+      if (!wavFile) {
+        Serial.println("[ERR] Failed to open file for writing");
+        i2s.end();
+        return;
+      }
+
+      Serial.printf("[MIC] Start Recording to file %s\n", filename);
+      writeWavHeader(wavFile);
+      break;
+    }
+
+    case MIC_MODE_TO_WS_SERVER:
+      // New walkie-talkie/server mode:
+      Serial.println("[MIC] Start streaming to WebSocket clients (server mode)");
+      break;
+  }
+
+  // Prepare task params
+  MicTaskParams* params = (MicTaskParams*)pvPortMalloc(sizeof(MicTaskParams));
+  if (!params) {
+    Serial.println("[ERR] Failed to alloc MicTaskParams");
+    if (mode == MIC_MODE_TO_FILE && wavFile) wavFile.close();
+    if (mode == MIC_MODE_TO_AI_CLIENT)      AIAssistant_StopStream();
+    i2s.end();
+    return;
+  }
+  params->mode = mode;
+
+  isRecording = true;
+  BaseType_t result = xTaskCreatePinnedToCore(
+    MIC_RecordTask,
+    "MIC_RecordTask",
+    8192,
+    params,
+    2,
+    &micTaskHandle,
+    1
+  );
+
+  if (result != pdPASS) {
+    Serial.println("[ERR] Failed to start MIC_RecordTask");
+    vPortFree(params);
+    if (mode == MIC_MODE_TO_FILE && wavFile) wavFile.close();
+    if (mode == MIC_MODE_TO_AI_CLIENT)      AIAssistant_StopStream();
+    i2s.end();
     isRecording = false;
   }
 }

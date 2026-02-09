@@ -70,9 +70,9 @@ void Lvgl_Init()
     pinMode(LCD_BL, OUTPUT);
     digitalWrite(LCD_BL, HIGH); // Turn on backlight
 
-    gfx->fillScreen(BLACK);
+    gfx->fillScreen(COLOR_BLACK);
     gfx->setTextSize(2);
-    gfx->setTextColor(WHITE);
+    gfx->setTextColor(COLOR_WHITE);
     gfx->setCursor(75, 10+40);
     gfx->println("LCD Initialized!");
 

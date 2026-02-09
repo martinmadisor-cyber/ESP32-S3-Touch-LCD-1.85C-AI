@@ -13,10 +13,70 @@
 #include "GUI/AlarmScreen.h"
 
 WebServer server(80);
+WebSocketsServer wsServer(81);
+
 static Audio* audio_ptr = nullptr;
 static File uploadFile;
 static unsigned long bootMillis = millis();
 static I2SClass streamI2S;
+
+static bool browser_connected = false;
+static uint8_t current_client_id = 0;
+
+// Simple state: are we currently playing remote audio?
+static volatile bool esp_rx_active = false;
+
+// Called from MIC_RecordTask instead of AIAssistant_SendAudioChunk
+void wsSendAudioChunk(const int16_t* samples, size_t byteCount) {
+    if (!browser_connected) return;
+    // Half-duplex trick: only send if we are NOT currently playing remote audio
+    if (esp_rx_active) return;
+    wsServer.sendBIN(current_client_id, (uint8_t*)samples, byteCount);
+}
+
+// WebSocket event handler for audio walkie-talkie
+static void wsAudioEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length) {
+    switch (type) {
+    case WStype_CONNECTED:
+        Serial.printf("[WS-AUDIO] Client %u connected\n", num);
+        browser_connected = true;
+        current_client_id = num;
+        break;
+    case WStype_DISCONNECTED:
+        Serial.printf("[WS-AUDIO] Client %u disconnected\n", num);
+        if (num == current_client_id) {
+            browser_connected = false;
+            esp_rx_active = false;
+        }
+        break;
+    case WStype_TEXT:
+        // Simple control messages from browser (JSON or plain)
+        // e.g. "START_TX", "STOP_TX"
+        if (strncmp((char*)payload, "START_TX", length) == 0) {
+            // Browser is talking -> stop ESP mic streaming if you want strict half-duplex
+            MIC_StopRecording();
+        } else if (strncmp((char*)payload, "STOP_TX", length) == 0) {
+            // Browser stopped talking -> ESP can start sending its mic again
+            // e.g. MIC_StartRecording("dummy.wav", 16000, 1, 16, true);
+        }
+        break;
+    case WStype_BIN:
+        // Incoming PCM from browser: 16-bit mono 16 kHz
+        if (length == 0) return;
+        esp_rx_active = true;
+
+        // Play this chunk on speaker (I2S out to PCM5101)
+        // You likely already have an I2SClass for output; shortened here:
+        // -- extern I2SClass i2s_out;  // define in your PCM5101 code
+        // Blocking write; in a real setup you'd queue this in a ring buffer
+        // -- i2s_out.write((const char*)payload, length);
+
+        esp_rx_active = false;
+        break;
+    default:
+        break;
+    }
+}
 
 /* Helpers */
 static bool readJsonBody(JsonDocument &doc) {
@@ -750,10 +810,20 @@ void HttpServer_Begin(Audio& audio)
         file.close();
     });
 
+
+    // wsServer.begin();
+    // wsAudio.onEvent(wsAudioEvent);
+
     // Start server
     server.begin();
 }
 
+void wsServer_Begin(){
+    wsServer.begin();
+    wsServer.onEvent(wsAudioEvent);
+}
+
 void HttpServer_Loop() {
     server.handleClient();
+    wsServer.loop();  
 }

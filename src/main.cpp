@@ -363,6 +363,7 @@ void setup() {
 
   Serial.println("Setup Http Server");
   HttpServer_Begin(audio);
+  wsServer_Begin();
   gfx->setCursor(75, 190+40);
   gfx->println("HTTP started");
 

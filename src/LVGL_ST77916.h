@@ -6,6 +6,9 @@
 #include "lvgl.h"
 #include "config.h"
 
+static const uint16_t COLOR_BLACK = 0x0000;
+static const uint16_t COLOR_WHITE = 0xFFFF;
+
 // Static constants
 extern const unsigned long INACTIVITY_TIMEOUT_MS;
 extern const uint32_t ALARM_AUTO_TIMEOUT_MS;

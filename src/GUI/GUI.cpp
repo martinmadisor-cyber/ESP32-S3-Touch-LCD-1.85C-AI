@@ -20,6 +20,7 @@ lv_obj_t* sdcard_mp3_screen = nullptr;
 lv_obj_t* alarm_screen = nullptr;
 lv_obj_t* alarm_screen_edit = nullptr; 
 lv_obj_t* assistant_screen = nullptr;
+lv_obj_t* recorder_screen = nullptr;
 lv_obj_t* clock_screen = nullptr;
 lv_obj_t* wifi_info_screen = nullptr;
 lv_obj_t* wifi_discovery_screen = nullptr;

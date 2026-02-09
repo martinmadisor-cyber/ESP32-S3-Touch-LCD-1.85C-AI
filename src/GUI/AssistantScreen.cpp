@@ -30,7 +30,7 @@ void GUI_CreateAssistantScreen() {
         filename = generateRotatingFileName();
         lv_obj_set_style_bg_color(btn, lv_palette_main(LV_PALETTE_RED), 0);
 
-        MIC_StartRecording(filename.c_str(), 16000, 1, 16, false);
+        MIC_StartRecording(filename.c_str(), 16000, 1, 16, MIC_MODE_TO_FILE);
     }, LV_EVENT_PRESSED, NULL);
 
     // On release: stop + upload recording
@@ -72,7 +72,7 @@ void GUI_CreateAssistantScreen() {
         Serial.printf("[STREAM] Start streaming: %s\n", filename.c_str());
         lv_obj_set_style_bg_color(btn, lv_palette_main(LV_PALETTE_RED), 0);
 
-        MIC_StartRecording(filename.c_str(), 16000, 1, 16, true);
+        MIC_StartRecording(filename.c_str(), 16000, 1, 16, MIC_MODE_TO_AI_CLIENT);
     }, LV_EVENT_PRESSED, NULL);
 
     lv_obj_add_event_cb(stream_btn, [](lv_event_t* e) {
