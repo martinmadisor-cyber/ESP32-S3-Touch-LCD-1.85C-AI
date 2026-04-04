@@ -365,8 +365,8 @@ static void MIC_RecordTask(void *parameter) {
         // }
 
         totalSize += sampleCount * sizeof(int16_t);
-        Serial.printf("[AGC] RMS: %.1f, Gain: %.2f\n", rms, agcGain);
-        vTaskDelay(pdMS_TO_TICKS(10));
+        // Removed vTaskDelay because i2s.readBytes is already blocking and yielding. 
+        // Delaying here drops 50% of the audio frames!
     }
     // Cleanup
     // heap_caps_free(streamBuffer);

@@ -141,17 +141,13 @@ static void playbackTaskFn(void*) {
             size_t n = rbPop(buf, sizeof(buf));
             if (n > 0 && tx_chan) {
                 size_t written = 0;
-                i2s_channel_write(tx_chan, buf, n, &written, pdMS_TO_TICKS(100));
+                i2s_channel_write(tx_chan, buf, n, &written, portMAX_DELAY);
             }
         } else {
-            // Silence to keep I2S clock running
-            memset(buf, 0, sizeof(buf));
-            if (tx_chan) {
-                size_t written = 0;
-                i2s_channel_write(tx_chan, buf, sizeof(buf), &written, pdMS_TO_TICKS(10));
-            }
+            // Let the WebSockets task receive more network chunks.
+            // The I2S DMA buffer will handle small network jitter smoothly.
+            vTaskDelay(pdMS_TO_TICKS(5));
         }
-        vTaskDelay(pdMS_TO_TICKS(1));
     }
     vTaskDelete(NULL);
 }
@@ -329,10 +325,26 @@ void Chatbot_Stop() {
 
 bool Chatbot_IsActive() { return chatbot_active; }
 
+static uint8_t txMicBuf[4096];
+static size_t txMicLen = 0;
+
 void Chatbot_SendAudioChunk(const void* buf, size_t bytes) {
-    if (chatbot_active && chatbot_ws.available()) {
-        chatbot_ws.sendBinary(reinterpret_cast<const char*>(buf), bytes);
-        lastActivity = millis();
+    if (!chatbot_active || !chatbot_ws.available()) return;
+
+    const uint8_t* ptr = (const uint8_t*)buf;
+    while (bytes > 0) {
+        size_t space = sizeof(txMicBuf) - txMicLen;
+        size_t take = (bytes < space) ? bytes : space;
+        memcpy(txMicBuf + txMicLen, ptr, take);
+        txMicLen += take;
+        ptr += take;
+        bytes -= take;
+
+        if (txMicLen >= sizeof(txMicBuf)) {
+            chatbot_ws.sendBinary(reinterpret_cast<const char*>(txMicBuf), txMicLen);
+            txMicLen = 0;
+            lastActivity = millis();
+        }
     }
 }
 
