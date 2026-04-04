@@ -139,33 +139,16 @@ static void deinitI2S() {
 // ─────────── Playback Task ───────────
 
 static void playbackTaskFn(void*) {
-    // 10 ms of 16 kHz mono = 320 bytes (From UDP Backend)
-    uint8_t buf[320];
-    // 10 ms of 24 kHz mono = 480 bytes (To I2S DAC)
-    int16_t outBuf[240];
+    // 10 ms of 24 kHz mono 16-bit = 480 bytes
+    uint8_t buf[480];
 
     while (chatbot_active) {
         size_t avail = rbAvailable();
         if (avail >= sizeof(buf)) {
             size_t n = rbPop(buf, sizeof(buf));
             if (n > 0 && tx_chan) {
-                // 16kHz -> 24kHz Linear Interpolation (2:3 upsampling)
-                int16_t* in16 = (int16_t*)buf;
-                size_t in_samples = n / 2;
-                size_t out_idx = 0;
-                
-                for (size_t i = 0; i < in_samples; i += 2) {
-                    if (i + 1 < in_samples) {
-                        outBuf[out_idx++] = in16[i];
-                        outBuf[out_idx++] = (int16_t)(((int32_t)in16[i] + (int32_t)in16[i+1]) / 2);
-                        outBuf[out_idx++] = in16[i+1];
-                    } else {
-                        outBuf[out_idx++] = in16[i]; // edge tail
-                    }
-                }
-                
                 size_t written = 0;
-                i2s_channel_write(tx_chan, outBuf, out_idx * sizeof(int16_t), &written, portMAX_DELAY);
+                i2s_channel_write(tx_chan, buf, n, &written, portMAX_DELAY);
                 last_ai_audio_time = millis(); // AI is currently speaking! Register exact time!
             }
         } else {
