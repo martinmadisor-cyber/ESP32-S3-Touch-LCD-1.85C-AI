@@ -5,7 +5,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 cd "$SCRIPT_DIR/.."
 
 echo "--- Running Embedded Tests on Hardware ---"
-source ~/.platformio/penv/bin/activate
 pio test -e master
 
 echo "--- Running Compilation Verification ---"

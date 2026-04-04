@@ -25,6 +25,11 @@ jobs:
         python -m pip install --upgrade pip
         pip install platformio
 
+    - name: Fetch remote Arduino libraries
+      run: |
+        chmod +x import_remote_libs.sh
+        ./import_remote_libs.sh
+
     - name: Run Firmware Tests and Build
       run: |
         chmod +x src/run_tests.sh

@@ -35,6 +35,18 @@ class ChatbotSession:
         self.active = False
         self.last_activity = time.time()
 
+    def _is_openai_ws_open(self) -> bool:
+        """Version-agnostic check if OpenAI websocket is open."""
+        if not self.openai_ws:
+            return False
+        # Modern websockets (13.0+) uses .open property or .state
+        if hasattr(self.openai_ws, "open"):
+            return self.openai_ws.open
+        # Fallback for some versions of websockets.asyncio
+        if hasattr(self.openai_ws, "state"):
+            return str(self.openai_ws.state).endswith("OPEN")
+        return True
+
     async def start(self) -> bool:
         """Connect to OpenAI Realtime API and begin relaying."""
         if not settings.OPENAI_API_KEY:
@@ -77,7 +89,7 @@ class ChatbotSession:
 
     async def send_audio(self, pcm_data: bytes):
         """Forward binary PCM16 audio from ESP32 to OpenAI."""
-        if not self.active or not self.openai_ws or self.openai_ws.closed:
+        if not self.active or not self.openai_ws or not self._is_openai_ws_open():
             return
         
         self.last_activity = time.time()
@@ -109,7 +121,7 @@ class ChatbotSession:
         if self.idle_checker_task:
             self.idle_checker_task.cancel()
             
-        if self.openai_ws and not self.openai_ws.closed:
+        if self.openai_ws and self._is_openai_ws_open():
             await self.openai_ws.close()
             logger.info(f"[Chatbot:{self.client_id}] OpenAI connection closed")
 
