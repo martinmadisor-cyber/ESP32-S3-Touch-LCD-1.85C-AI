@@ -159,14 +159,18 @@ class ChatbotSession:
                         logger.info(f"[Chatbot:{self.client_id}] Turn Start -> Muting ESP32 Mic")
                         
                     if not self.active: break
-                    
-                    if self.udp_server:
-                        self.udp_server.send_to_esp32(self.client_ip, pcm_data)
-                    else:
-                        await self.esp32_ws.send(pcm_data)
-                    
-                    sleep_time = (len(pcm_data) / 48000.0) * 0.9
-                    await asyncio.sleep(sleep_time)
+                    CHUNK_SIZE = 1024
+                    for i in range(0, len(pcm_data), CHUNK_SIZE):
+                        if not self.active: break
+                        chunk = pcm_data[i:i+CHUNK_SIZE]
+                        
+                        if self.udp_server:
+                            self.udp_server.send_to_esp32(self.client_ip, chunk)
+                        else:
+                            await self.esp32_ws.send(chunk)
+                        
+                        sleep_time = (len(chunk) / 48000.0) * 0.9
+                        await asyncio.sleep(sleep_time)
                 except asyncio.TimeoutError:
                     if is_transmitting:
                         is_transmitting = False
