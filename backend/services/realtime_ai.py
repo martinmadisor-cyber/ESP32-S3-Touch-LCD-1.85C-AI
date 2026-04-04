@@ -46,32 +46,25 @@ class RealtimeAIService:
     ]
 
     def build_session_config(self) -> dict:
-        """Returns the payload needed to configure an OpenAI Realtime session properly."""
         return {
             "type": "session.update",
             "session": {
+                "modalities": ["audio", "text"],
                 "instructions": self.SYSTEM_INSTRUCTIONS + self.TOOL_INSTRUCTIONS,
                 "model": settings.VOICE_CHAT_MODEL,
+                "voice": settings.VOICE,
+                "input_audio_format": "pcm16",
+                "output_audio_format": "pcm16",
+                "input_audio_transcription": {
+                    "model": "whisper-1",
+                },
+                "turn_detection": {
+                    "type": "server_vad",
+                    "threshold": 0.35,
+                    "prefix_padding_ms": 500,
+                    "silence_duration_ms": 800,
+                },
                 "max_response_output_tokens": 400,
                 "tools": self.CHATBOT_TOOLS,
-                "audio": {
-                    "input": {
-                        "noise_reduction": {
-                            "type": "near_field"
-                        },
-                        "transcription": {
-                            "model": settings.TRANSCRIPTION_MODEL,
-                        },
-                        "turn_detection": {
-                            "type": "server_vad",
-                            "threshold": 0.35,
-                            "prefix_padding_ms": 500,
-                            "silence_duration_ms": 800,
-                        },
-                    },
-                    "output": {
-                        "voice": settings.VOICE,
-                    },
-                },
             },
         }
