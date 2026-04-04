@@ -23,9 +23,11 @@ logger = logging.getLogger("chatbot")
 class ChatbotSession:
     """Manages an OpenAI Realtime API connection for one ESP32 client."""
 
-    def __init__(self, esp32_ws, client_id: str, storage_svc: StorageService, ai_svc: RealtimeAIService):
+    def __init__(self, esp32_ws, client_id: str, storage_svc: StorageService, ai_svc: RealtimeAIService, udp_server=None):
         self.esp32_ws = esp32_ws
         self.client_id = client_id
+        self.client_ip = esp32_ws.remote_address[0] if esp32_ws.remote_address else "0.0.0.0"
+        self.udp_server = udp_server
         self.storage_svc = storage_svc
         self.ai_svc = ai_svc
         
@@ -144,19 +146,33 @@ class ChatbotSession:
 
     async def _send_audio_to_esp32(self):
         """Pulls audio from the queue and sends to ESP32 at a controlled bitrate (1.1x realtime)."""
+        is_transmitting = False
         while self.active:
             try:
-                pcm_data = await self.audio_queue.get()
-                if not self.active: break
-                
-                await self.esp32_ws.send(pcm_data)
-                
-                # 24kHz 16-bit Mono = 48,000 bytes per second.
-                # Delay based on chunk size to prevent overflowing the ESP32 TCP stack!
-                # We multiply by 0.9 to send slightly faster (1.1x) to keep the ringbuffer full but not overflowing.
-                sleep_time = (len(pcm_data) / 48000.0) * 0.9
-                await asyncio.sleep(sleep_time)
-                
+                # Wait for audio with a short timeout to detect end of speech
+                try:
+                    pcm_data = await asyncio.wait_for(self.audio_queue.get(), timeout=0.15)
+                    
+                    if not is_transmitting:
+                        is_transmitting = True
+                        await self.esp32_ws.send(json.dumps({"type": "CHATBOT_TURN_START"}))
+                        logger.info(f"[Chatbot:{self.client_id}] Turn Start -> Muting ESP32 Mic")
+                        
+                    if not self.active: break
+                    
+                    if self.udp_server:
+                        self.udp_server.send_to_esp32(self.client_ip, pcm_data)
+                    else:
+                        await self.esp32_ws.send(pcm_data)
+                    
+                    sleep_time = (len(pcm_data) / 48000.0) * 0.9
+                    await asyncio.sleep(sleep_time)
+                except asyncio.TimeoutError:
+                    if is_transmitting:
+                        is_transmitting = False
+                        await self.esp32_ws.send(json.dumps({"type": "CHATBOT_TURN_STOP"}))
+                        logger.info(f"[Chatbot:{self.client_id}] Turn Stop -> Unmuting ESP32 Mic")
+
             except websockets.exceptions.ConnectionClosed:
                 break
             except asyncio.CancelledError:

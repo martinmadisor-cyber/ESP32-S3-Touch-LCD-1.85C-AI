@@ -17,14 +17,20 @@
 #include <utility>
 #include "driver/i2s_std.h"
 #include "esp_heap_caps.h"
+#include <WiFiUdp.h>
 
 using namespace websockets;
 
 // --- State ---
 static WebsocketsClient chatbot_ws;
+static WiFiUDP udpMedia;
+static IPAddress udpServerIP;
 static volatile bool chatbot_active = false;
 static volatile bool chatbot_ready  = false;
 static uint32_t lastActivity = 0;
+static uint32_t last_ai_audio_time = 0; // Tracks the last time ESP32 speaker played AI audio
+static uint32_t last_ws_audio_rx_time = 0; // Tracks the last time a binary audio frame was received
+static bool backend_ai_turn_active = false; // Tracks explicit backend turn states
 static String lastErrorStr = "";
 
 // --- I2S TX for raw PCM output ---
@@ -143,6 +149,7 @@ static void playbackTaskFn(void*) {
             if (n > 0 && tx_chan) {
                 size_t written = 0;
                 i2s_channel_write(tx_chan, buf, n, &written, portMAX_DELAY);
+                last_ai_audio_time = millis(); // AI is currently speaking! Register exact time!
             }
         } else {
             // Let the WebSockets task receive more network chunks.
@@ -157,6 +164,7 @@ static void playbackTaskFn(void*) {
 
 static void onMsg(WebsocketsMessage msg) {
     if (msg.isBinary()) {
+        last_ws_audio_rx_time = millis(); // AI is actively streaming audio to us!
         const uint8_t* d = (const uint8_t*)msg.c_str();
         size_t len = msg.length();
         if (len > 0 && !rbPush(d, len)) {
@@ -168,6 +176,14 @@ static void onMsg(WebsocketsMessage msg) {
         if (deserializeJson(doc, msg.data()) == DeserializationError::Ok) {
             const char* t = doc["type"] | "";
             if (strcmp(t, "CHATBOT_READY") == 0)              chatbot_ready = true;
+            else if (strcmp(t, "CHATBOT_TURN_START") == 0) {
+                backend_ai_turn_active = true;
+                Serial.println("[Chatbot] Backend Turn START");
+            }
+            else if (strcmp(t, "CHATBOT_TURN_STOP") == 0) {
+                backend_ai_turn_active = false;
+                Serial.println("[Chatbot] Backend Turn STOP");
+            }
             else if (strcmp(t, "CHATBOT_SPEECH_STARTED") == 0) Serial.println("[Chatbot] VAD: speech start");
             else if (strcmp(t, "CHATBOT_SPEECH_STOPPED") == 0) Serial.println("[Chatbot] VAD: speech stop");
             else if (strcmp(t, "CHATBOT_AUDIO_DONE") == 0)     Serial.println("[Chatbot] response audio done");
@@ -234,6 +250,20 @@ static void wsPollerFn(void*) {
             chatbot_ws.poll();
             xSemaphoreGive(wsMutex);
         }
+
+        // --- UDP Media Receive Polling ---
+        int packetSize = udpMedia.parsePacket();
+        if (packetSize > 0) {
+            uint8_t rxBuf[2048];
+            size_t len = udpMedia.read(rxBuf, sizeof(rxBuf) < packetSize ? sizeof(rxBuf) : packetSize);
+            if (len > 0) {
+                last_ws_audio_rx_time = millis(); // Track incoming data for Echo suppression!
+                if (!rbPush(rxBuf, len)) {
+                    Serial.println("[Chatbot] Ring-buf overflow");
+                }
+            }
+        }
+
         // 300s timeout check
         if (millis() - lastActivity > 300000) {
             Serial.println("[Chatbot] Idle timeout (>300s)");
@@ -280,8 +310,21 @@ void Chatbot_Start() {
         return;
     }
 
+    // Parse UDP Server IP from WebSocket URL (e.g. ws://5.9.104.22:8765)
+    String url = chatbotURL;
+    int start = url.indexOf("://");
+    if (start > 0) {
+        int end = url.indexOf(':', start + 3);
+        if (end == -1) end = url.indexOf('/', start + 3);
+        String host = url.substring(start + 3, end);
+        WiFi.hostByName(host.c_str(), udpServerIP);
+    }
+    
+    // Start UDP socket on any random available port
+    udpMedia.begin(0);
+
     // 3. Connect WS to same server as AIAssistant (port 8765)
-    Serial.printf("[Chatbot] WS → %s\n", chatbotURL);
+    Serial.printf("[Chatbot] WS → %s, UDP → %s:8767\n", chatbotURL, udpServerIP.toString().c_str());
     chatbot_ws.onMessage(onMsg);
     chatbot_ws.onEvent(onEvt);
 
@@ -321,6 +364,8 @@ void Chatbot_Stop() {
     chatbot_active = false;
     chatbot_ready  = false;
 
+    udpMedia.stop();
+
     if (wsMutex && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
         if (chatbot_ws.available()) {
             chatbot_ws.send(R"({"type":"CHATBOT_STOP"})");
@@ -344,6 +389,16 @@ static size_t txMicLen = 0;
 void Chatbot_SendAudioChunk(const void* buf, size_t bytes) {
     if (!chatbot_active || !chatbot_ws.available()) return;
 
+    // Echo Suppression: Mute the microphone if:
+    // 1. The backend explicitly claimed the turn.
+    // 2. We've received a binary audio stream chunk within the last 400ms (Data is flowing in).
+    // 3. The native speaker physically played audio within the last 300ms (Acoustic overlap).
+    if (backend_ai_turn_active || 
+       (millis() - last_ws_audio_rx_time < 400) || 
+       (millis() - last_ai_audio_time < 300)) {
+        return; 
+    }
+
     const uint8_t* ptr = (const uint8_t*)buf;
     while (bytes > 0) {
         size_t space = sizeof(txMicBuf) - txMicLen;
@@ -354,13 +409,12 @@ void Chatbot_SendAudioChunk(const void* buf, size_t bytes) {
         bytes -= take;
 
         if (txMicLen >= sizeof(txMicBuf)) {
-            if (wsMutex && xSemaphoreTake(wsMutex, portMAX_DELAY) == pdTRUE) {
-                if (chatbot_ws.available()) {
-                    chatbot_ws.sendBinary(reinterpret_cast<const char*>(txMicBuf), txMicLen);
-                }
-                xSemaphoreGive(wsMutex);
-                txMicLen = 0;
-            }
+            // Blast packet over UDP directly! No TCP buffering delays!
+            udpMedia.beginPacket(udpServerIP, 8767);
+            udpMedia.write(txMicBuf, txMicLen);
+            udpMedia.endPacket();
+
+            txMicLen = 0;
             lastActivity = millis();
         }
     }

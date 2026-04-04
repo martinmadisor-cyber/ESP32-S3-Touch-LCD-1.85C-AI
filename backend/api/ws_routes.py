@@ -17,6 +17,7 @@ class WSRoutes:
         self.connected_clients = {}  # {websocket: last_hello_timestamp}
         self.stream_sessions = {}    # {client_id: AudioStreamSession}
         self.chatbot_sessions = {}   # {client_id: ChatbotSession}
+        self.udp_server = None       # Attached by main.py
 
     async def handle_client(self, websocket):
         client_id = str(id(websocket))
@@ -49,7 +50,7 @@ class WSRoutes:
                             if client_id in self.chatbot_sessions:
                                 await self.chatbot_sessions[client_id].stop()
                             
-                            session = ChatbotSession(websocket, client_id, self.storage_svc, self.ai_svc)
+                            session = ChatbotSession(websocket, client_id, self.storage_svc, self.ai_svc, self.udp_server)
                             ok = await session.start()
                             if ok:
                                 self.chatbot_sessions[client_id] = session

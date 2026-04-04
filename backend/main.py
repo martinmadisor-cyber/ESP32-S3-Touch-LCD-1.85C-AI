@@ -14,6 +14,7 @@ from services.realtime_ai import RealtimeAIService
 from workers.agent_worker import AgentWorker
 from api.http_routes import create_app
 from api.ws_routes import WSRoutes
+from api.udp_server import ChatbotUdpServer
 
 
 def run_fastapi_server(app, shutdown_event):
@@ -86,6 +87,13 @@ async def main():
     ws_server = await websockets.serve(ws_router.handle_client, "0.0.0.0", 8765, max_size=2**20)
     logging.info("[WS] Server started at ws://0.0.0.0:8765")
 
+    # Start UDP Media Server
+    udp_transport, udp_protocol = await loop.create_datagram_endpoint(
+        lambda: ChatbotUdpServer(ws_router),
+        local_addr=('0.0.0.0', 8767)
+    )
+    ws_router.udp_server = udp_protocol
+
     pinger = asyncio.create_task(ws_router.ping_clients(shutdown_event))
     dispatcher = asyncio.create_task(ws_router.dispatch_agent_responses(shutdown_event))
 
@@ -96,6 +104,9 @@ async def main():
     logging.info("[WS] Shutting down WebSocket server...")
     ws_server.close()
     await ws_server.wait_closed()
+    
+    if udp_transport:
+        udp_transport.close()
     
     pinger.cancel()
     dispatcher.cancel()
