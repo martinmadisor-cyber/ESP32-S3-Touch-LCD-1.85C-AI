@@ -181,6 +181,23 @@ class ChatbotSession:
                         session_update = self.ai_svc.build_session_config()
                         await self.openai_ws.send(json.dumps(session_update))
 
+                        # Trigger a brief introductory greeting from the AI immediately
+                        greeting_event = {
+                            "type": "conversation.item.create",
+                            "item": {
+                                "type": "message",
+                                "role": "system",
+                                "content": [
+                                    {
+                                        "type": "input_text",
+                                        "text": "Introduce yourself warmly to the user in 1 short sentence."
+                                    }
+                                ]
+                            }
+                        }
+                        await self.openai_ws.send(json.dumps(greeting_event))
+                        await self.openai_ws.send(json.dumps({"type": "response.create"}))
+
                     elif event_type == "response.audio.delta":
                         audio_b64 = event.get("delta", "")
                         if audio_b64:
