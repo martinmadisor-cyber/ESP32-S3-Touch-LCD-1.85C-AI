@@ -52,7 +52,7 @@ class RealtimeAIService:
             "session": {
                 "instructions": self.SYSTEM_INSTRUCTIONS + self.TOOL_INSTRUCTIONS,
                 "model": settings.VOICE_CHAT_MODEL,
-                "max_output_tokens": 400,
+                "max_response_output_tokens": 400,
                 "tools": self.CHATBOT_TOOLS,
                 "audio": {
                     "input": {
