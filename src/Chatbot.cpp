@@ -254,7 +254,7 @@ static void wsPollerFn(void*) {
         // --- UDP Media Receive Polling ---
         int packetSize = udpMedia.parsePacket();
         if (packetSize > 0) {
-            uint8_t rxBuf[2048];
+            static uint8_t rxBuf[2048];
             size_t len = udpMedia.read(rxBuf, sizeof(rxBuf) < packetSize ? sizeof(rxBuf) : packetSize);
             if (len > 0) {
                 last_ws_audio_rx_time = millis(); // Track incoming data for Echo suppression!

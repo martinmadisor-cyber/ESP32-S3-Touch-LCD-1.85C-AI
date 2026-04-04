@@ -1,4 +1,4 @@
-#!/bin/zsh
+#!/bin/bash
 
 # import_remote_libs.sh
 # Purpose: Manually pull missing libraries from GitHub into the Arduino/ folder.
@@ -16,7 +16,7 @@ libs=(
 )
 
 # Iterate and clone/update
-for ((i=1; i<=${#libs}; i+=2)); do
+for ((i=0; i<${#libs[@]}; i+=2)); do
     url="${libs[$i]}"
     folder="${libs[$i+1]}"
     target="$DEST_DIR/$folder"

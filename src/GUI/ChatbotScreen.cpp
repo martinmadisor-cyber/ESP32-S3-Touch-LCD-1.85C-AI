@@ -25,8 +25,8 @@ void GUI_CreateChatbotScreen() {
     status_label = lv_label_create(chatbot_screen);
     lv_label_set_text(status_label, "Tap START to begin");
     lv_obj_set_style_text_color(status_label, lv_color_hex(0xAAAAAA), 0);
-    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_18, 0);
-    lv_obj_align(status_label, LV_ALIGN_CENTER, 0, -80);
+    lv_obj_set_style_text_font(status_label, &lv_font_montserrat_14, 0);
+    lv_obj_align(status_label, LV_ALIGN_TOP_MID, 0, 60);
 
     // --- Big Start/Stop button ---
     lv_obj_t* action_btn = lv_button_create(chatbot_screen);
