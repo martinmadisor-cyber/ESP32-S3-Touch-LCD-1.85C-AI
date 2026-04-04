@@ -45,7 +45,7 @@ void GUI_CreateChatbotScreen() {
     lv_obj_center(btn_label);
 
     auto update_ui_cb = [](lv_timer_t* t) {
-        lv_obj_t* btn = (lv_obj_t*)t->user_data;
+        lv_obj_t* btn = (lv_obj_t*)lv_timer_get_user_data(t);
         lv_obj_t* lbl = lv_obj_get_child(btn, 0);
         bool running = Chatbot_IsActive();
 

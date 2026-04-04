@@ -1,15 +1,12 @@
 #!/bin/bash
 
-# run_tests.sh (Firmware) - Convenience script to run PlatformIO tests
-
 # Switch to project root if running from src
-if [[ $PWD == *"/src" ]]; then
-  cd ..
-fi
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+cd "$SCRIPT_DIR/.."
 
-echo "--- Running Native (Desktop simulation) Tests ---"
-pio test -e native
+echo "--- Running Embedded Tests on Hardware ---"
+source ~/.platformio/penv/bin/activate
+pio test -e master
 
-echo ""
-echo "--- Running Compilation Verification (Master) ---"
+echo "--- Running Compilation Verification ---"
 pio run -e master

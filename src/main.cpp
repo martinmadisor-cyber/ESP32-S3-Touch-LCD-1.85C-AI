@@ -277,6 +277,7 @@ static void my_audio_info(Audio::msg_t m) {
   }
 }
 
+#ifndef PIO_UNIT_TESTING
 void setup() {
   Audio::audio_info_callback = my_audio_info;
   Serial.begin(115200);
@@ -441,3 +442,4 @@ void loop() {
   // audio.loop();
   vTaskDelay(pdMS_TO_TICKS(50));
 }
+#endif // PIO_UNIT_TESTING

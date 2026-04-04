@@ -10,4 +10,4 @@ if [ -z "$PORT" ]; then
 fi
 
 echo "Using port: $PORT"
-pio run -t upload --upload-port "$PORT"
+pio run -e master --target upload --upload-port "$PORT"
