@@ -255,6 +255,7 @@ static void MIC_RecordTask(void *parameter) {
     float agcAttack = 0.01f;
     float agcRelease = 0.001f;
     uint32_t totalSize = 0;
+    uint8_t decimState = 0; // Tracks the 3:2 decimation ratio
 
     // Streaming
     // Add this near top of function:
@@ -312,27 +313,45 @@ static void MIC_RecordTask(void *parameter) {
             finalSamples[i] = (int16_t)s;
         }
 
+        // 24kHz -> 16kHz Decimation (Drop 1 out of every 3 samples)
+        int16_t samples16k[256];
+        size_t count16k = 0;
+        
+        if (sampleRate == 24000) {
+            for (size_t i = 0; i < sampleCount; ++i) {
+                if (decimState != 2) {
+                    samples16k[count16k++] = finalSamples[i];
+                }
+                decimState = (decimState + 1) % 3;
+            }
+        } else {
+            // Passthrough if already at a non-24k rate
+            for (size_t i = 0; i < sampleCount; ++i) {
+                samples16k[count16k++] = finalSamples[i];
+            }
+        }
+
         // MODE-SPECIFIC HANDLING
         switch (mode) {
           case MIC_MODE_TO_AI_CLIENT:
-            AIAssistant_SendAudioChunk(finalSamples,
-                                       sampleCount * sizeof(int16_t));
+            AIAssistant_SendAudioChunk(samples16k,
+                                       count16k * sizeof(int16_t));
             break;
 
           case MIC_MODE_TO_FILE:
-            wavFile.write((uint8_t *)finalSamples,
-                          sampleCount * sizeof(int16_t));
+            wavFile.write((uint8_t *)samples16k,
+                          count16k * sizeof(int16_t));
             break;
 
           case MIC_MODE_TO_WS_SERVER:
             // New "server" mode: send to walkie-talkie WebSocket
-            wsSendAudioChunk(finalSamples,
-                                        sampleCount * sizeof(int16_t));
+            wsSendAudioChunk(samples16k,
+                                        count16k * sizeof(int16_t));
             break;
 
           case MIC_MODE_TO_CHATBOT:
-            Chatbot_SendAudioChunk(finalSamples,
-                                   sampleCount * sizeof(int16_t));
+            Chatbot_SendAudioChunk(samples16k,
+                                   count16k * sizeof(int16_t));
             break;
         }
 
@@ -370,7 +389,7 @@ static void MIC_RecordTask(void *parameter) {
         //     wavFile.write((uint8_t *)finalSamples, sampleCount * sizeof(int16_t));
         // }
 
-        totalSize += sampleCount * sizeof(int16_t);
+        totalSize += count16k * sizeof(int16_t);
         // Removed vTaskDelay because i2s.readBytes is already blocking and yielding. 
         // Delaying here drops 50% of the audio frames!
     }

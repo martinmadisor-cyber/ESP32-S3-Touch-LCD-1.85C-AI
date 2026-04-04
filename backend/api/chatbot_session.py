@@ -13,6 +13,7 @@ import asyncio
 import time
 import datetime
 import logging
+import audioop
 import websockets
 from core.config import settings
 from services.storage_service import StorageService
@@ -38,6 +39,8 @@ class ChatbotSession:
         self.audio_queue = asyncio.Queue()
         self.active = False
         self.last_activity = time.time()
+        self.up_state = None
+        self.down_state = None
 
     def _is_openai_ws_open(self) -> bool:
         """Version-agnostic check if OpenAI websocket is open."""
@@ -99,7 +102,9 @@ class ChatbotSession:
         
         self.last_activity = time.time()
         try:
-            audio_b64 = base64.b64encode(pcm_data).decode("utf-8")
+            # Upsample 16kHz from ESP32 to 24kHz for OpenAI
+            pcm_24k, self.up_state = audioop.ratecv(pcm_data, 2, 1, 16000, 24000, self.up_state)
+            audio_b64 = base64.b64encode(pcm_24k).decode("utf-8")
             event = {
                 "type": "input_audio_buffer.append",
                 "audio": audio_b64,
@@ -159,17 +164,21 @@ class ChatbotSession:
                         logger.info(f"[Chatbot:{self.client_id}] Turn Start -> Muting ESP32 Mic")
                         
                     if not self.active: break
+                    
+                    # Downsample 24kHz from OpenAI to 16kHz for UDP/ESP32
+                    pcm_16k, self.down_state = audioop.ratecv(pcm_data, 2, 1, 24000, 16000, self.down_state)
+
                     CHUNK_SIZE = 1024
-                    for i in range(0, len(pcm_data), CHUNK_SIZE):
+                    for i in range(0, len(pcm_16k), CHUNK_SIZE):
                         if not self.active: break
-                        chunk = pcm_data[i:i+CHUNK_SIZE]
+                        chunk = pcm_16k[i:i+CHUNK_SIZE]
                         
                         if self.udp_server:
                             self.udp_server.send_to_esp32(self.client_ip, chunk)
                         else:
                             await self.esp32_ws.send(chunk)
                         
-                        sleep_time = (len(chunk) / 48000.0) * 0.9
+                        sleep_time = (len(chunk) / 32000.0) * 0.9
                         await asyncio.sleep(sleep_time)
                 except asyncio.TimeoutError:
                     if is_transmitting:
