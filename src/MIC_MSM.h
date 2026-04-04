@@ -8,6 +8,7 @@
 #include <SD.h>
 #include "FS.h"
 #include "AIAssistant.h"
+#include "Chatbot.h"
 
 #define I2S_PIN_BCK   15   // Bit clock (input from ESP32 to mic)
 #define I2S_PIN_WS    2    // Word select (LRCK)
@@ -17,7 +18,8 @@
 typedef enum {
     MIC_MODE_TO_FILE = 0,        // Save WAV to SD
     MIC_MODE_TO_AI_CLIENT = 1,   // Current AIAssistant_* streaming
-    MIC_MODE_TO_WS_SERVER = 2    // New: send to WebSocket clients
+    MIC_MODE_TO_WS_SERVER = 2,   // Send to WebSocket clients
+    MIC_MODE_TO_CHATBOT = 3      // Send to Chatbot WS (OpenAI Realtime)
 } mic_mode_t;
 
 typedef struct {

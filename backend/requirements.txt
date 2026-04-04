@@ -4,3 +4,6 @@ gTTS
 fastapi
 python-multipart
 uvicorn
+pytest
+pytest-asyncio
+httpx

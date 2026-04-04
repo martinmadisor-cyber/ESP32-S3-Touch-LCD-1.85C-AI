@@ -18,6 +18,9 @@ static void source_event_handler(lv_event_t* e) {
         GUI_SwitchToScreen(GUI_CreateAssistantScreen, &assistant_screen);
     } else if (strcmp(label, "Recorder") == 0) {
         GUI_SwitchToScreen(GUI_CreateRecorderScreen, &recorder_screen);
+    } else if (strcmp(label, "Chatbot") == 0) {
+        MIC_SR_Stop();
+        GUI_SwitchToScreen(GUI_CreateChatbotScreen, &chatbot_screen);
     } else if (strcmp(label, "Back") == 0) {
         GUI_SwitchToScreen(GUI_CreateMainScreen, &main_screen);
     }
@@ -57,6 +60,9 @@ void GUI_CreateSourceScreen() {
     lv_obj_add_event_cb(btn, source_event_handler, LV_EVENT_CLICKED, NULL);
 
     btn = lv_list_add_button(source_list, LV_SYMBOL_AUDIO, "Recorder");
+    lv_obj_add_event_cb(btn, source_event_handler, LV_EVENT_CLICKED, NULL);
+
+    btn = lv_list_add_button(source_list, LV_SYMBOL_CALL, "Chatbot");
     lv_obj_add_event_cb(btn, source_event_handler, LV_EVENT_CLICKED, NULL);
 
     lv_list_add_text(source_list, "");

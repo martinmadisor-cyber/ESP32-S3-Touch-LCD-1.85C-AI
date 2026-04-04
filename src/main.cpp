@@ -15,6 +15,7 @@
 #include "HttpServer.h"
 #include "SD_Card.h"
 #include "AIAssistant.h"
+#include "Chatbot.h"
 #include "esp_heap_caps.h"
 #include "esp_psram.h"
 #include "esp_partition.h"
@@ -371,6 +372,10 @@ void setup() {
   AIAssistant_Init(audio);
   gfx->setCursor(75, 220+40);
   gfx->println("AI Assistent started");
+
+  // Chatbot (OpenAI Realtime API)
+  Chatbot_Init(audio);
+  Serial.println("Chatbot initialized");
 
   delay(100); // Wait before starting threads
   Serial.println("Setup new threads");

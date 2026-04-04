@@ -9,9 +9,12 @@ static uint8_t currentVolume = DEFAULT_VOLUME;
 
 Audio audio;
 
+// Guard flag: prevents audio.loop() from running on a destroyed object
+static volatile bool audio_tick_enabled = true;
+
 void IRAM_ATTR increase_audio_tick(void *arg)
 {
-  audio.loop();
+  if (audio_tick_enabled) audio.loop();
 }
 
 uint8_t LoadVolumeFromEEPROM() {
@@ -41,6 +44,30 @@ void Audio_Init() {
   };
   esp_timer_create(&audio_tick_timer_args, &audio_tick_timer);
   esp_timer_start_periodic(audio_tick_timer, Audio_TICK_PERIOD_MS * 1000);
+}
+
+void Audio_Deinit() {
+  // Prevent timer callback from calling audio.loop() on destroyed object
+  audio_tick_enabled = false;
+  vTaskDelay(pdMS_TO_TICKS(50));  // Wait for any in-flight callback
+
+  audio.stopSong();
+  vTaskDelay(pdMS_TO_TICKS(20));
+
+  // Explicitly destroy the Audio object (releases its internal I2S channel)
+  audio.~Audio();
+  Serial.println("[Audio] Deinitialized - I2S released");
+}
+
+void Audio_Reinit() {
+  // Reconstruct Audio object in-place (same memory as the global `audio`)
+  new (&audio) Audio();
+  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+  audio.setVolume(currentVolume);
+
+  // Re-enable the timer callback
+  audio_tick_enabled = true;
+  Serial.println("[Audio] Reinitialized");
 }
 
 void SetVolume(uint8_t vol) {

@@ -319,9 +319,14 @@ static void MIC_RecordTask(void *parameter) {
             break;
 
           case MIC_MODE_TO_WS_SERVER:
-            // New “server” mode: send to walkie-talkie WebSocket
+            // New "server" mode: send to walkie-talkie WebSocket
             wsSendAudioChunk(finalSamples,
                                         sampleCount * sizeof(int16_t));
+            break;
+
+          case MIC_MODE_TO_CHATBOT:
+            Chatbot_SendAudioChunk(finalSamples,
+                                   sampleCount * sizeof(int16_t));
             break;
         }
 
@@ -388,6 +393,10 @@ static void MIC_RecordTask(void *parameter) {
       case MIC_MODE_TO_WS_SERVER:
         // Optionally: notify WebSocket clients that mic stopped
         // e.g. WalkieTalkie_StopStream();
+        break;
+
+      case MIC_MODE_TO_CHATBOT:
+        // Chatbot handles its own cleanup
         break;
     }
 
@@ -541,6 +550,10 @@ void MIC_StartRecording(const char* filename,
     case MIC_MODE_TO_WS_SERVER:
       // New walkie-talkie/server mode:
       Serial.println("[MIC] Start streaming to WebSocket clients (server mode)");
+      break;
+
+    case MIC_MODE_TO_CHATBOT:
+      Serial.println("[MIC] Start streaming to Chatbot (OpenAI Realtime)");
       break;
   }
 

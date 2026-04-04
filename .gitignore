@@ -48,3 +48,15 @@ compile.sh
 
 # debug information files
 *.dwo
+
+# Python
+__pycache__/
+*.py[cod]
+*.class
+.venv/
+
+# Backend Specific
+backend/recordings/
+
+# Arduino Libraries
+Arduino/
