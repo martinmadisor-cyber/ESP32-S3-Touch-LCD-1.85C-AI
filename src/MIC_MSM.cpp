@@ -287,12 +287,18 @@ static void MIC_RecordTask(void *parameter) {
         float rms = sqrtf(sumSquares / sampleCount);
 
         // AGC gain update
-        if (rms > 0.0f) {
+        if (rms > 10.0f) { // Noise floor threshold
             float desiredGain = targetLevel / rms;
+            // Cap maximum gain to prevent amplifying pure static into deafening noise
+            if (desiredGain > 8.0f) desiredGain = 8.0f;
+            
             if (desiredGain > agcGain)
                 agcGain += agcAttack * (desiredGain - agcGain);
             else
                 agcGain += agcRelease * (desiredGain - agcGain);
+        } else {
+            // In absolute silence, slowly return gain to 1.0
+            agcGain += agcRelease * (1.0f - agcGain);
         }
 
         // Apply AGC gain

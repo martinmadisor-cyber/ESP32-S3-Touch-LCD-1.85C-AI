@@ -354,13 +354,13 @@ void Chatbot_SendAudioChunk(const void* buf, size_t bytes) {
         bytes -= take;
 
         if (txMicLen >= sizeof(txMicBuf)) {
-            if (wsMutex && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+            if (wsMutex && xSemaphoreTake(wsMutex, portMAX_DELAY) == pdTRUE) {
                 if (chatbot_ws.available()) {
                     chatbot_ws.sendBinary(reinterpret_cast<const char*>(txMicBuf), txMicLen);
                 }
                 xSemaphoreGive(wsMutex);
+                txMicLen = 0;
             }
-            txMicLen = 0;
             lastActivity = millis();
         }
     }
