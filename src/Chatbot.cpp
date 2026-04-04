@@ -31,7 +31,7 @@ static String lastErrorStr = "";
 static i2s_chan_handle_t tx_chan = NULL;
 
 // --- Ring buffer (PSRAM) ---
-#define CHATBOT_RINGBUF_SIZE (48 * 1024)
+#define CHATBOT_RINGBUF_SIZE (512 * 1024)
 static uint8_t* ringBuf = nullptr;
 static volatile size_t rbWrite = 0;
 static volatile size_t rbRead  = 0;
@@ -39,6 +39,7 @@ static volatile size_t rbRead  = 0;
 // --- Tasks ---
 static TaskHandle_t playbackTask = nullptr;
 static TaskHandle_t wsPollerTask = nullptr;
+static SemaphoreHandle_t wsMutex = NULL;
 
 // ─────────── Helpers ───────────
 
@@ -229,7 +230,10 @@ static void onEvt(WebsocketsEvent evt, String) {
 
 static void wsPollerFn(void*) {
     while (chatbot_active) {
-        chatbot_ws.poll();
+        if (wsMutex && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(10)) == pdTRUE) {
+            chatbot_ws.poll();
+            xSemaphoreGive(wsMutex);
+        }
         // 300s timeout check
         if (millis() - lastActivity > 300000) {
             Serial.println("[Chatbot] Idle timeout (>300s)");
@@ -249,6 +253,7 @@ static void wsPollerFn(void*) {
 // ─────────── Public API ───────────
 
 void Chatbot_Init(Audio& audio) {
+    if (!wsMutex) wsMutex = xSemaphoreCreateMutex();
     ringBuf = (uint8_t*)heap_caps_malloc(CHATBOT_RINGBUF_SIZE, MALLOC_CAP_SPIRAM);
     if (!ringBuf) ringBuf = (uint8_t*)malloc(CHATBOT_RINGBUF_SIZE);
     Serial.printf("[Chatbot] Init %s\n", ringBuf ? "OK" : "FAIL");
@@ -290,7 +295,10 @@ void Chatbot_Start() {
     }
 
     // Tell the server this connection is a chatbot session
-    chatbot_ws.send(R"({"type":"CHATBOT_START"})");
+    if (wsMutex && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        chatbot_ws.send(R"({"type":"CHATBOT_START"})");
+        xSemaphoreGive(wsMutex);
+    }
 
     // 4. Playback task (core 0)
     xTaskCreatePinnedToCore(playbackTaskFn, "CB_Play", 4096, NULL, 3, &playbackTask, 0);
@@ -313,9 +321,14 @@ void Chatbot_Stop() {
     chatbot_active = false;
     chatbot_ready  = false;
 
-    if (chatbot_ws.available()) chatbot_ws.send(R"({"type":"CHATBOT_STOP"})");
+    if (wsMutex && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(100)) == pdTRUE) {
+        if (chatbot_ws.available()) {
+            chatbot_ws.send(R"({"type":"CHATBOT_STOP"})");
+            chatbot_ws.close();
+        }
+        xSemaphoreGive(wsMutex);
+    }
     vTaskDelay(pdMS_TO_TICKS(100));
-    chatbot_ws.close();
 
     deinitI2S();
     Audio_Reinit();
@@ -341,7 +354,12 @@ void Chatbot_SendAudioChunk(const void* buf, size_t bytes) {
         bytes -= take;
 
         if (txMicLen >= sizeof(txMicBuf)) {
-            chatbot_ws.sendBinary(reinterpret_cast<const char*>(txMicBuf), txMicLen);
+            if (wsMutex && xSemaphoreTake(wsMutex, pdMS_TO_TICKS(20)) == pdTRUE) {
+                if (chatbot_ws.available()) {
+                    chatbot_ws.sendBinary(reinterpret_cast<const char*>(txMicBuf), txMicLen);
+                }
+                xSemaphoreGive(wsMutex);
+            }
             txMicLen = 0;
             lastActivity = millis();
         }

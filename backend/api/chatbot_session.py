@@ -32,6 +32,8 @@ class ChatbotSession:
         self.openai_ws = None
         self.relay_task = None
         self.idle_checker_task = None
+        self.audio_task = None
+        self.audio_queue = asyncio.Queue()
         self.active = False
         self.last_activity = time.time()
 
@@ -77,6 +79,7 @@ class ChatbotSession:
             # Start background tasks
             self.relay_task = asyncio.create_task(self._relay_openai_to_esp32())
             self.idle_checker_task = asyncio.create_task(self._check_idle_timeout())
+            self.audio_task = asyncio.create_task(self._send_audio_to_esp32())
 
             # Notify ESP32
             await self.esp32_ws.send(json.dumps({"type": "CHATBOT_READY"}))
@@ -120,6 +123,8 @@ class ChatbotSession:
             self.relay_task.cancel()
         if self.idle_checker_task:
             self.idle_checker_task.cancel()
+        if self.audio_task:
+            self.audio_task.cancel()
             
         if self.openai_ws and self._is_openai_ws_open():
             await self.openai_ws.close()
@@ -136,6 +141,28 @@ class ChatbotSession:
                 logger.info(f"[Chatbot:{self.client_id}] Session idle timeout (>300s)")
                 await self.stop(idle_timeout=True)
                 break
+
+    async def _send_audio_to_esp32(self):
+        """Pulls audio from the queue and sends to ESP32 at a controlled bitrate (1.1x realtime)."""
+        while self.active:
+            try:
+                pcm_data = await self.audio_queue.get()
+                if not self.active: break
+                
+                await self.esp32_ws.send(pcm_data)
+                
+                # 24kHz 16-bit Mono = 48,000 bytes per second.
+                # Delay based on chunk size to prevent overflowing the ESP32 TCP stack!
+                # We multiply by 0.9 to send slightly faster (1.1x) to keep the ringbuffer full but not overflowing.
+                sleep_time = (len(pcm_data) / 48000.0) * 0.9
+                await asyncio.sleep(sleep_time)
+                
+            except websockets.exceptions.ConnectionClosed:
+                break
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.error(f"[Chatbot:{self.client_id}] Audio send err: {e}")
 
     async def _relay_openai_to_esp32(self):
         """Read events from OpenAI and relay audio back to ESP32."""
@@ -158,10 +185,7 @@ class ChatbotSession:
                         audio_b64 = event.get("delta", "")
                         if audio_b64:
                             pcm_data = base64.b64decode(audio_b64)
-                            try:
-                                await self.esp32_ws.send(pcm_data)
-                            except websockets.exceptions.ConnectionClosed:
-                                break
+                            self.audio_queue.put_nowait(pcm_data)
 
                     elif event_type == "response.audio.done":
                         try:
@@ -170,6 +194,12 @@ class ChatbotSession:
                             break
 
                     elif event_type == "input_audio_buffer.speech_started":
+                        # Clear any stale outgoing AI audio so it immediately stops talking!
+                        while not self.audio_queue.empty():
+                            try:
+                                self.audio_queue.get_nowait()
+                            except asyncio.QueueEmpty:
+                                break
                         try:
                             await self.esp32_ws.send(json.dumps({"type": "CHATBOT_SPEECH_STARTED"}))
                         except websockets.exceptions.ConnectionClosed:
