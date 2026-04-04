@@ -20,6 +20,23 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: Cache PlatformIO Core
+      uses: actions/cache@v4
+      with:
+        path: ~/.platformio
+        key: ${{ runner.os }}-pio-core-${{ hashFiles('**/platformio.ini') }}
+        restore-keys: |
+          ${{ runner.os }}-pio-core-
+
+    - name: Cache PlatformIO Build
+      uses: actions/cache@v4
+      with:
+        path: .pio
+        key: ${{ runner.os }}-pio-build-${{ hashFiles('**/platformio.ini') }}-${{ github.run_id }}
+        restore-keys: |
+          ${{ runner.os }}-pio-build-${{ hashFiles('**/platformio.ini') }}-
+          ${{ runner.os }}-pio-build-
+
     - name: Install PlatformIO
       run: |
         python -m pip install --upgrade pip
