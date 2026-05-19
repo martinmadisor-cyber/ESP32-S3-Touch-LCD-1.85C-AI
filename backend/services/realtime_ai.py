@@ -63,6 +63,9 @@ class RealtimeAIService:
                             "threshold": 0.35,
                             "prefix_padding_ms": 500,
                             "silence_duration_ms": 800,
+                        },
+                        "transcription": {
+                            "model": "whisper-1"
                         }
                     },
                     "output": {
