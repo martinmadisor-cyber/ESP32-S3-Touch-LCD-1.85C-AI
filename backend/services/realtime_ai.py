@@ -68,6 +68,7 @@ class RealtimeAIService:
                     "output": {
                         "format": {
                             "type": "audio/pcm",
+                            "rate": 24000,
                         },
                         "voice": settings.VOICE,
                     }
