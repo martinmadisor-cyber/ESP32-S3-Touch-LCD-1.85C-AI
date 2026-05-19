@@ -57,6 +57,12 @@ class RealtimeAIService:
                         "format": {
                             "type": "audio/pcm",
                             "rate": 24000,
+                        },
+                        "turn_detection": {
+                            "type": "server_vad",
+                            "threshold": 0.35,
+                            "prefix_padding_ms": 500,
+                            "silence_duration_ms": 800,
                         }
                     },
                     "output": {
@@ -65,12 +71,6 @@ class RealtimeAIService:
                         },
                         "voice": settings.VOICE,
                     }
-                },
-                "turn_detection": {
-                    "type": "server_vad",
-                    "threshold": 0.35,
-                    "prefix_padding_ms": 500,
-                    "silence_duration_ms": 800,
                 },
                 "instructions": self.SYSTEM_INSTRUCTIONS + self.TOOL_INSTRUCTIONS,
                 "input_audio_transcription": {
