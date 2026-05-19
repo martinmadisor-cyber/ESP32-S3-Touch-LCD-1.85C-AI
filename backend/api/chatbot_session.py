@@ -24,7 +24,7 @@ logger = logging.getLogger("chatbot")
 class ChatbotSession:
     """Manages an OpenAI Realtime API connection for one ESP32 client."""
 
-    def __init__(self, esp32_ws, client_id: str, storage_svc: StorageService, ai_svc: RealtimeAIService, udp_server=None, downsample_to=None):
+    def __init__(self, esp32_ws, client_id: str, storage_svc: StorageService, ai_svc: RealtimeAIService, udp_server=None, downsample_to=None, mic_rate=None):
         self.esp32_ws = esp32_ws
         self.client_id = client_id
         self.client_ip = esp32_ws.remote_address[0] if esp32_ws.remote_address else "0.0.0.0"
@@ -32,6 +32,7 @@ class ChatbotSession:
         self.storage_svc = storage_svc
         self.ai_svc = ai_svc
         self.downsample_to = downsample_to
+        self.mic_rate = int(mic_rate) if mic_rate else 16000  # ESP32 mic rate (default 16kHz)
         
         self.openai_ws = None
         self.relay_task = None
@@ -102,8 +103,8 @@ class ChatbotSession:
         
         self.last_activity = time.time()
         try:
-            # Upsample 16kHz from ESP32 to 24kHz for OpenAI
-            pcm_24k, self.up_state = audioop.ratecv(pcm_data, 2, 1, 16000, 24000, self.up_state)
+            # Upsample mic audio from ESP32's mic_rate to OpenAI's 24kHz
+            pcm_24k, self.up_state = audioop.ratecv(pcm_data, 2, 1, self.mic_rate, 24000, self.up_state)
             audio_b64 = base64.b64encode(pcm_24k).decode("utf-8")
             event = {
                 "type": "input_audio_buffer.append",
