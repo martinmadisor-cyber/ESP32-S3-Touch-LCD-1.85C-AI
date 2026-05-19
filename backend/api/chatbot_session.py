@@ -253,7 +253,7 @@ class ChatbotSession:
                         except websockets.exceptions.ConnectionClosed:
                             break
 
-                    elif event_type == "response.audio_transcript.done":
+                    elif event_type == "response.output_audio_transcript.done":
                         transcript = event.get('transcript', '')
                         logger.info(f"[Chatbot:{self.client_id}] Assistant: {transcript}")
                         self.storage_svc.write_transcript_event(self.client_id, "Assistant", transcript)
