@@ -271,7 +271,8 @@ static void my_audio_info(Audio::msg_t m) {
     case Audio::evt_lyrics:
       Serial.printf("sync lyrics: ...... %s\n", m.msg); break;
     case Audio::evt_log:
-      Serial.printf("audio log: ........ %s\n", m.msg); break;
+      // Serial.printf("audio log: ........ %s\n", m.msg); 
+      break;
     default:
       Serial.printf("message: .......... %s\n", m.msg); break;
   }
