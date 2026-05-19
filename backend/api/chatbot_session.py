@@ -65,7 +65,6 @@ class ChatbotSession:
             logger.info(f"[Chatbot:{self.client_id}] Connecting to OpenAI Realtime API...")
             extra_headers = {
                 "Authorization": f"Bearer {settings.OPENAI_API_KEY}",
-                "OpenAI-Beta": "realtime=v1",
             }
             self.openai_ws = await websockets.connect(
                 settings.OPENAI_REALTIME_URL,
