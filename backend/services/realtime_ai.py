@@ -51,7 +51,7 @@ class RealtimeAIService:
             "session": {
                 "type": "realtime",
                 "model": settings.VOICE_CHAT_MODEL,
-                "output_modalities": ["audio"],
+                "output_modalities": ["audio", "text"],
                 "audio": {
                     "input": {
                         "format": {
