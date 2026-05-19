@@ -169,10 +169,7 @@ class ChatbotSession:
                         if not self.active: break
                         chunk = pcm_data[i:i+CHUNK_SIZE]
                         
-                        if self.udp_server:
-                            self.udp_server.send_to_esp32(self.client_ip, chunk)
-                        else:
-                            await self.esp32_ws.send(chunk)
+                        await self.esp32_ws.send(chunk)
                         
                         sleep_time = (len(chunk) / 48000.0) * 0.9
                         await asyncio.sleep(sleep_time)
@@ -223,13 +220,13 @@ class ChatbotSession:
                         await self.openai_ws.send(json.dumps(greeting_event))
                         await self.openai_ws.send(json.dumps({"type": "response.create"}))
 
-                    elif event_type == "response.audio.delta":
+                    elif event_type == "response.output_audio.delta":
                         audio_b64 = event.get("delta", "")
                         if audio_b64:
                             pcm_data = base64.b64decode(audio_b64)
                             self.audio_queue.put_nowait(pcm_data)
 
-                    elif event_type == "response.audio.done":
+                    elif event_type == "response.output_audio.done":
                         try:
                             await self.esp32_ws.send(json.dumps({"type": "CHATBOT_AUDIO_DONE"}))
                         except websockets.exceptions.ConnectionClosed:
