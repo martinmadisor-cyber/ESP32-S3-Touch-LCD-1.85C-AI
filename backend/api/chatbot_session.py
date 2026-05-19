@@ -224,6 +224,8 @@ class ChatbotSession:
                         audio_b64 = event.get("delta", "")
                         if audio_b64:
                             pcm_data = base64.b64decode(audio_b64)
+                            # Downsample 24kHz to 16kHz for stable ESP32 DAC playback
+                            pcm_data, self.down_state = audioop.ratecv(pcm_data, 2, 1, 24000, 16000, self.down_state)
                             self.audio_queue.put_nowait(pcm_data)
 
                     elif event_type == "response.output_audio.done":
