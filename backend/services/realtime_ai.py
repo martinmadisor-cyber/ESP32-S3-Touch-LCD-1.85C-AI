@@ -50,19 +50,31 @@ class RealtimeAIService:
             "type": "session.update",
             "session": {
                 "type": "realtime",
-                "instructions": self.SYSTEM_INSTRUCTIONS + self.TOOL_INSTRUCTIONS,
                 "model": settings.VOICE_CHAT_MODEL,
-                "voice": settings.VOICE,
-                "input_audio_format": "pcm16",
-                "output_audio_format": "pcm16",
-                "input_audio_transcription": {
-                    "model": "whisper-1",
+                "output_modalities": ["audio"],
+                "audio": {
+                    "input": {
+                        "format": {
+                            "type": "audio/pcm",
+                            "rate": 24000,
+                        }
+                    },
+                    "output": {
+                        "format": {
+                            "type": "audio/pcm",
+                        },
+                        "voice": settings.VOICE,
+                    }
                 },
                 "turn_detection": {
                     "type": "server_vad",
                     "threshold": 0.35,
                     "prefix_padding_ms": 500,
                     "silence_duration_ms": 800,
+                },
+                "instructions": self.SYSTEM_INSTRUCTIONS + self.TOOL_INSTRUCTIONS,
+                "input_audio_transcription": {
+                    "model": "whisper-1",
                 },
                 "max_response_output_tokens": 400,
                 "tools": self.CHATBOT_TOOLS,
