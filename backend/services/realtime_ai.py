@@ -73,7 +73,6 @@ class RealtimeAIService:
                     }
                 },
                 "instructions": self.SYSTEM_INSTRUCTIONS + self.TOOL_INSTRUCTIONS,
-                "max_response_output_tokens": 400,
                 "tools": self.CHATBOT_TOOLS,
             },
         }
