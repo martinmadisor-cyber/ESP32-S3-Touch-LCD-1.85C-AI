@@ -24,13 +24,14 @@ logger = logging.getLogger("chatbot")
 class ChatbotSession:
     """Manages an OpenAI Realtime API connection for one ESP32 client."""
 
-    def __init__(self, esp32_ws, client_id: str, storage_svc: StorageService, ai_svc: RealtimeAIService, udp_server=None):
+    def __init__(self, esp32_ws, client_id: str, storage_svc: StorageService, ai_svc: RealtimeAIService, udp_server=None, downsample_to=None):
         self.esp32_ws = esp32_ws
         self.client_id = client_id
         self.client_ip = esp32_ws.remote_address[0] if esp32_ws.remote_address else "0.0.0.0"
         self.udp_server = udp_server
         self.storage_svc = storage_svc
         self.ai_svc = ai_svc
+        self.downsample_to = downsample_to
         
         self.openai_ws = None
         self.relay_task = None
@@ -224,8 +225,8 @@ class ChatbotSession:
                         audio_b64 = event.get("delta", "")
                         if audio_b64:
                             pcm_data = base64.b64decode(audio_b64)
-                            # Downsample 24kHz to 16kHz for stable ESP32 DAC playback
-                            pcm_data, self.down_state = audioop.ratecv(pcm_data, 2, 1, 24000, 16000, self.down_state)
+                            if self.downsample_to:
+                                pcm_data, self.down_state = audioop.ratecv(pcm_data, 2, 1, 24000, int(self.downsample_to), self.down_state)
                             self.audio_queue.put_nowait(pcm_data)
 
                     elif event_type == "response.output_audio.done":

@@ -50,7 +50,8 @@ class WSRoutes:
                             if client_id in self.chatbot_sessions:
                                 await self.chatbot_sessions[client_id].stop()
                             
-                            session = ChatbotSession(websocket, client_id, self.storage_svc, self.ai_svc, self.udp_server)
+                            downsample_to = parsed.get("downsample_to")
+                            session = ChatbotSession(websocket, client_id, self.storage_svc, self.ai_svc, self.udp_server, downsample_to=downsample_to)
                             ok = await session.start()
                             if ok:
                                 self.chatbot_sessions[client_id] = session
