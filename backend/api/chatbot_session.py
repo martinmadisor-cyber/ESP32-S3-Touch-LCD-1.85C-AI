@@ -33,6 +33,7 @@ class ChatbotSession:
         self.ai_svc = ai_svc
         self.downsample_to = downsample_to
         self.mic_rate = int(mic_rate) if mic_rate else 16000  # ESP32 mic rate (default 16kHz)
+        logger.info(f"[Chatbot:{self.client_id}] Audio params: mic_rate={self.mic_rate}, downsample_to={self.downsample_to or 'None (native 24kHz)'}")
         
         self.openai_ws = None
         self.relay_task = None
