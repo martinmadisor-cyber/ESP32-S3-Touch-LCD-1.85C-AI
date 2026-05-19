@@ -49,8 +49,6 @@ class RealtimeAIService:
         return {
             "type": "session.update",
             "session": {
-                "type": "realtime",
-                "modalities": ["audio", "text"],
                 "instructions": self.SYSTEM_INSTRUCTIONS + self.TOOL_INSTRUCTIONS,
                 "model": settings.VOICE_CHAT_MODEL,
                 "voice": settings.VOICE,
