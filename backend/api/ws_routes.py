@@ -52,6 +52,7 @@ class WSRoutes:
                             
                             downsample_to = parsed.get("downsample_to")
                             mic_rate = parsed.get("mic_rate")
+                            logging.info(f"[WS] Audio params: mic_rate={mic_rate or '16000 (default)'}, downsample_to={downsample_to or 'None (native 24kHz)'}")
                             session = ChatbotSession(websocket, client_id, self.storage_svc, self.ai_svc, self.udp_server, downsample_to=downsample_to, mic_rate=mic_rate)
                             ok = await session.start()
                             if ok:
