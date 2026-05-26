@@ -26,6 +26,8 @@ lv_obj_t* clock_screen = nullptr;
 lv_obj_t* wifi_info_screen = nullptr;
 lv_obj_t* wifi_discovery_screen = nullptr;
 lv_obj_t* wifi_password_screen = nullptr;
+lv_obj_t* system_diagnostics_screen = nullptr;
+lv_obj_t* music_spectrum_screen = nullptr;
 
 // --- Global shared widgets ---
 lv_obj_t* bigclock_label = nullptr;

@@ -180,7 +180,7 @@ button.danger:hover {
 
 .entry, .file-row {
   display: grid;
-  grid-template-columns: 1fr 110px 1fr 90px;
+  grid-template-columns: 1fr 110px 1.5fr;
   gap: 12px;
   align-items: center;
   margin: 0 20px 10px 20px;
@@ -205,12 +205,10 @@ button.danger:hover {
 
 /* Responsive tweaks */
 @media (max-width: 900px) {
-  .entry, .file-row { grid-template-columns: 1fr 90px 1fr 70px; }
+  .entry, .file-row { grid-template-columns: 1fr 90px 1.2fr; }
 }
 @media (max-width: 640px) {
   .entry, .file-row { grid-template-columns: 1fr 80px 1fr; }
-  .entry > :nth-child(4),
-  .file-row > :nth-child(4) { grid-column: 3; justify-self: end; }
 }
 
 /* Code/Status blocks */

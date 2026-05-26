@@ -39,6 +39,7 @@ void SD_Init() {
     uint64_t totalBytes = SD_MMC.totalBytes();
     uint64_t usedBytes = SD_MMC.usedBytes();
     SDCard_Size = totalBytes/(1024*1024);
+    SDCard_Flag = true;
     Serial.printf("Total SD Card space: %llu\n", totalBytes);
     Serial.printf("Used SD Card space: %llu\n", usedBytes);
     Serial.printf("Free SD Card space: %llu\n", totalBytes - usedBytes);

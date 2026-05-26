@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ESP32-S3 Walkie-Talkie</title>
+  <link rel="stylesheet" href="style.css" />
+  <style>
+    /* Page-specific extras only */
+    .intercom-card {
+      margin: 20px;
+      padding: 28px 24px;
+    }
+    .intercom-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 20px;
+    }
+    .intercom-icon { font-size: 42px; line-height: 1; }
+    .intercom-header h2 { margin: 0; color: var(--navy-700); font-size: 20px; }
+    .intercom-header p  { margin: 4px 0 0; color: var(--text-dim); font-size: 13px; }
+
+    /* Status row */
+    .status-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: var(--muted-bg);
+      border: 1px solid var(--card-border);
+    }
+    .status-dot {
+      width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0;
+      background: #aaa; transition: background .3s, box-shadow .3s;
+    }
+    .status-dot.ok  { background: #28a745; box-shadow: 0 0 0 4px rgba(40,167,69,.18); animation: pulse-dot 2s infinite; }
+    .status-dot.err { background: var(--red-500); }
+    @keyframes pulse-dot {
+      0%,100% { box-shadow: 0 0 0 4px rgba(40,167,69,.18); }
+      50%      { box-shadow: 0 0 0 8px rgba(40,167,69,.05); }
+    }
+    .status-text { font-size: 14px; color: var(--text-dim); font-weight: 600; }
+
+    /* VU meters */
+    .vu-group { margin-bottom: 14px; }
+    .vu-label {
+      display: flex; justify-content: space-between;
+      font-size: 12px; color: var(--text-dim);
+      margin-bottom: 5px; font-weight: 600;
+    }
+    .vu-track {
+      height: 10px; border-radius: 6px; overflow: hidden;
+      background: var(--muted-bg); border: 1px solid var(--card-border);
+    }
+    .vu-fill {
+      height: 100%; width: 0%; border-radius: 6px;
+      transition: width 70ms linear;
+    }
+    .vu-fill.tx { background: linear-gradient(90deg, var(--blue-500), #5ac8fa); }
+    .vu-fill.rx { background: linear-gradient(90deg, #1a7a38, #28a745); }
+
+    /* Action row */
+    .action-row {
+      display: flex; gap: 10px; flex-wrap: wrap;
+      margin-top: 20px;
+    }
+    .action-row button { flex: 1; min-width: 140px; padding: 10px 16px; font-size: 15px; }
+    button.stop-btn { background: var(--red-500); }
+    button.stop-btn:hover { background: var(--red-600); }
+
+    /* Note */
+    .notice {
+      margin-top: 16px;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: #fff8e6;
+      border: 1px solid #f0d080;
+      color: #7a5800;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+    /* IP input field */
+    .ip-input {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      background: var(--muted-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-dim);
+      font-size: 14px;
+      margin-top: 6px;
+      outline: none;
+      box-sizing: border-box;
+      transition: border-color 0.2s;
+    }
+    .ip-input:focus {
+      border-color: var(--navy-500);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <nav>
+    <a href="/">Home</a>
+    <a href="/internet_radio.html">Internet Radio</a>
+    <a href="/file_explorer.html">File Explorer</a>
+    <a href="/alarms.html">Alarms</a>
+    <a class="active" href="/walkie_talkie.html">Walkie-Talkie</a>
+  </nav>
+
+  <h1>🎙️ Walkie-Talkie Intercom</h1>
+
+  <section class="intercom-card">
+
+    <div class="intercom-header">
+      <div class="intercom-icon">📡</div>
+      <div>
+        <h2>ESP32 Two-Way Intercom</h2>
+        <p>WiFi audio bridge with Echo Cancellation &amp; Noise Suppression</p>
+      </div>
+    </div>
+
+    <!-- Connection Status -->
+    <div class="status-row">
+      <div class="status-dot" id="D"></div>
+      <span class="status-text" id="S">Ready — press Start to connect</span>
+    </div>
+
+    <!-- TX VU meter -->
+    <div class="vu-group">
+      <div class="vu-label">
+        <span>🎤 Your voice (TX → ESP32)</span>
+        <span id="TD">— dB</span>
+      </div>
+      <div class="vu-track"><div class="vu-fill tx" id="TF"></div></div>
+    </div>
+
+    <!-- RX VU meter -->
+    <div class="vu-group">
+      <div class="vu-label">
+        <span>🔊 From ESP32 speaker (RX)</span>
+        <span id="RD">— dB</span>
+      </div>
+      <div class="vu-track"><div class="vu-fill rx" id="RF"></div></div>
+    </div>
+
+    <!-- IP Configuration (Required for file:// local loading and easy debugging) -->
+    <div id="ipConfigRow" class="vu-group">
+      <div class="vu-label">
+        <label for="espIP" style="color: var(--text-dim); font-size: 12px; font-weight: 600;">ESP32 Device IP Address</label>
+      </div>
+      <input id="espIP" type="text" class="ip-input" placeholder="e.g. 192.168.1.163">
+    </div>
+
+    <!-- Buttons -->
+    <div class="action-row">
+      <button id="startBtn" onclick="go()">🎙️ Start Intercom</button>
+      <button id="stopBtn"  onclick="go()" class="stop-btn" style="display:none">⏹ Stop</button>
+    </div>
+
+    <!-- Notice -->
+    <div class="notice">
+      ⚠️ <strong>Mic context security:</strong><br>
+      To bypass browser block, open this HTML file locally as a file in **Firefox** (double-click `walkie_talkie.html` on your computer).<br>
+      Alternatively, for Chrome, enable: <em>chrome://flags/#unsafely-treat-insecure-origin-as-secure</em> and add this ESP32 address.
+    </div>
+
+  </section>
+
+  <script>
+    let ws, ctx, stream, proc, live = false, nxt = 0;
+
+    const dot      = document.getElementById('D');
+    const stxt     = document.getElementById('S');
+    const TF       = document.getElementById('TF');
+    const RF       = document.getElementById('RF');
+    const TD       = document.getElementById('TD');
+    const RD       = document.getElementById('RD');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn  = document.getElementById('stopBtn');
+    const espIP    = document.getElementById('espIP');
+
+    // Automatically determine default IP address
+    if (location.hostname && location.hostname !== 'localhost' && location.hostname !== '127.0.0.1') {
+      espIP.value = location.hostname;
+    } else {
+      // If loaded as local file, try to read saved IP from localStorage
+      espIP.value = localStorage.getItem('esp32_ip') || '';
+    }
+
+    // Save manually entered IP
+    espIP.addEventListener('change', () => {
+      localStorage.setItem('esp32_ip', espIP.value.trim());
+    });
+
+    function setStatus(cls, msg) {
+      dot.className = 'status-dot ' + (cls || '');
+      stxt.innerHTML = msg; // support HTML warning markup
+    }
+
+    function setLiveUI(isLive) {
+      startBtn.style.display = isLive ? 'none'  : '';
+      stopBtn.style.display  = isLive ? ''      : 'none';
+    }
+
+    function vu(fill, lbl, v) {
+      fill.style.width = Math.min(100, v * 100 / 32767) + '%';
+      lbl.textContent  = v > 10 ? Math.round(20 * Math.log10(v / 32767)) + ' dB' : '— dB';
+    }
+
+    // Linear-interpolation downsample to 16 kHz
+    function downsample(f, srcRate) {
+      if (srcRate === 16000) return f;
+      const ratio = srcRate / 16000;
+      const n = Math.floor(f.length / ratio);
+      const out = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        const j = i * ratio, j0 = j | 0, a = j - j0;
+        out[i] = f[j0] * (1 - a) + (f[Math.min(j0 + 1, f.length - 1)]) * a;
+      }
+      return out;
+    }
+
+    function connect() {
+      const targetIP = espIP.value.trim();
+      if (!targetIP) {
+        setStatus('err', 'Please enter your ESP32 IP address first.');
+        live = false;
+        setLiveUI(false);
+        return;
+      }
+      const WSU = 'ws://' + targetIP + ':8081';
+      console.log('Connecting to Walkie-Talkie WebSocket:', WSU);
+      ws = new WebSocket(WSU);
+      ws.binaryType = 'arraybuffer';
+      ws.onopen  = () => setStatus('ok',  'Connected — speak now!');
+      ws.onclose = () => { setStatus('err', 'Disconnected'); if (live) setTimeout(connect, 2000); };
+      ws.onerror = () => setStatus('err', 'WebSocket error');
+      ws.onmessage = ev => {
+        if (!ctx) return;
+        const s16 = new Int16Array(ev.data);
+        const f32 = new Float32Array(s16.length);
+        let pk = 0;
+        for (let i = 0; i < s16.length; i++) {
+          f32[i] = s16[i] / 32768;
+          if (Math.abs(s16[i]) > pk) pk = Math.abs(s16[i]);
+        }
+        vu(RF, RD, pk);
+        const buf = ctx.createBuffer(1, f32.length, 16000);
+        buf.copyToChannel(f32, 0);
+        const src = ctx.createBufferSource();
+        src.buffer = buf;
+        src.connect(ctx.destination);
+        const now = ctx.currentTime;
+        if (nxt < now + 0.02) nxt = now + 0.06;
+        src.start(nxt);
+        nxt += f32.length / 16000;
+      };
+    }
+
+    function getAudioStream() {
+      const constraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+          channelCount: 1
+        }
+      };
+
+      // 1. Try standard modern navigator.mediaDevices.getUserMedia
+      if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+        return navigator.mediaDevices.getUserMedia(constraints);
+      }
+
+      // 2. Try legacy webkit/moz/ms versions
+      const legacyGetUserMedia = navigator.getUserMedia || 
+                                 navigator.webkitGetUserMedia || 
+                                 navigator.mozGetUserMedia || 
+                                 navigator.msGetUserMedia;
+      if (legacyGetUserMedia) {
+        return new Promise((resolve, reject) => {
+          legacyGetUserMedia.call(navigator, constraints, resolve, reject);
+        });
+      }
+
+      // 3. Fallback error with clear instruction for Insecure Origin
+      const currentIP = espIP.value.trim() || '192.168.1.163';
+      return Promise.reject(new Error(
+        "Browser blocked mic access due to insecure HTTP context.<br><br>" +
+        "<strong>EASY WORKAROUNDS:</strong><br>" +
+        "1. Open this file locally: Double-click <code>walkie_talkie.html</code> in your folder to open it as <code>file://...</code> in **Firefox** (Firefox allows mic on local files).<br>" +
+        "2. If using **Chrome**, open <code>chrome://flags/#unsafely-treat-insecure-origin-as-secure</code>, enable the flag, and paste: <code>http://" + currentIP + ":8080, http://" + currentIP + "</code> then relaunch."
+      ));
+    }
+
+    async function go() {
+      if (live) {
+        // Stop
+        live = false;
+        setLiveUI(false);
+        if (proc)   { proc.disconnect(); proc = null; }
+        if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+        if (ctx)    { ctx.close(); ctx = null; }
+        if (ws)     { ws.close(); ws = null; }
+        vu(TF, TD, 0); vu(RF, RD, 0);
+        setStatus('', 'Stopped');
+        return;
+      }
+
+      // Start
+      live = true;
+      setLiveUI(true);
+      setStatus('', 'Requesting microphone…');
+
+      try {
+        ctx = new AudioContext();
+        stream = await getAudioStream();
+
+        connect();
+
+        const src = ctx.createMediaStreamSource(stream);
+        proc = ctx.createScriptProcessor(1024, 1, 1);
+        proc.onaudioprocess = e => {
+          const raw = e.inputBuffer.getChannelData(0);
+          const f = downsample(raw, ctx.sampleRate);
+          const s = new Int16Array(f.length);
+          let pk = 0;
+          for (let i = 0; i < f.length; i++) {
+            const v = Math.max(-1, Math.min(1, f[i]));
+            s[i] = v * 32767;
+            if (Math.abs(s[i]) > pk) pk = Math.abs(s[i]);
+          }
+          vu(TF, TD, pk);
+          if (ws && ws.readyState === 1) ws.send(s.buffer);
+        };
+        src.connect(proc);
+        proc.connect(ctx.destination);
+
+      } catch (err) {
+        live = false;
+        setLiveUI(false);
+        setStatus('err', 'Mic error: ' + err.message);
+      }
+    }
+  </script>
+
+</body>
+</html>

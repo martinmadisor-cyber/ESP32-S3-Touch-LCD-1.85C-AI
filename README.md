@@ -203,7 +203,7 @@ pio device monitor
 ```
 export ESP32_IP=http://192.168.0.32
 
-curl -X POST "$ESP32_IP/upload?path=/" -F "file=@./sdcard/style.css"
+curl -X POST "$ESP32_IP/upload?path=/html/" -F "file=@./sdcard/style.css"
 curl -X POST "$ESP32_IP/upload?path=/html/" -F "file=@./sdcard/index.html" 
 curl -X POST "$ESP32_IP/upload?path=/html/" -F "file=@./sdcard/internet_radio.html"
 curl -X POST "$ESP32_IP/upload?path=/html/" -F "file=@./sdcard/file_explorer.html" 

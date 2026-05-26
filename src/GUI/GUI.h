@@ -16,6 +16,8 @@
 #include "ChatbotScreen.h"
 #include "WifiInfo.h"
 #include "WifiDiscoveryScreen.h"
+#include "SystemDiagnosticsScreen.h"
+#include "MusicSpectrumScreen.h"
 
 /*
 
@@ -96,6 +98,8 @@ extern lv_obj_t* clock_screen;
 extern lv_obj_t* wifi_info_screen;
 extern lv_obj_t* wifi_discovery_screen;
 extern lv_obj_t* wifi_password_screen;
+extern lv_obj_t* system_diagnostics_screen;
+extern lv_obj_t* music_spectrum_screen;
 
 // Define screen enum
 typedef enum {
@@ -111,7 +115,9 @@ typedef enum {
     SCREEN_CHATBOT,  // For Chatbot screen
     SCREEN_WIFI_INFO, // For WiFi information
     SCREEN_WIFI_DISCOVERY,  // For WiFi discovery
-    SCREEN_WIFI_PASSWORD    // For WiFi password entry
+    SCREEN_WIFI_PASSWORD,    // For WiFi password entry
+    SCREEN_SYSTEM_DIAGNOSTICS, // For System Diagnostics
+    SCREEN_MUSIC_SPECTRUM    // For Music Spectrum
 } ScreenIndex;
 
 extern volatile bool last_wifi_connected;

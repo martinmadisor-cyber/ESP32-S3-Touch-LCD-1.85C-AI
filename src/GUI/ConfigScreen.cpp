@@ -2,6 +2,7 @@
 #include "GUI.h"
 #include "WifiDiscoveryScreen.h"
 #include "WifiInfo.h"
+#include "SystemDiagnosticsScreen.h"
 
 static lv_obj_t* config_list;
 
@@ -13,6 +14,8 @@ static void config_event_handler(lv_event_t* e) {
         GUI_SwitchToScreen(GUI_CreateWifiDiscoveryScreen, &wifi_discovery_screen);
     } else if (strcmp(label, "WIFI Information") == 0) {
         GUI_SwitchToScreen(GUI_CreateWifiInfoScreen, &wifi_info_screen);
+    } else if (strcmp(label, "System Diagnostics") == 0) {
+        GUI_SwitchToScreen(GUI_CreateSystemDiagnosticsScreen, &system_diagnostics_screen);
     } else {
         Serial.printf("Unknown config option: %s\n", label);
     }
@@ -41,6 +44,9 @@ void GUI_CreateConfigScreen() {
     lv_obj_add_event_cb(btn, config_event_handler, LV_EVENT_CLICKED, NULL);
 
     btn = lv_list_add_button(config_list, LV_SYMBOL_LIST, "WIFI Information");
+    lv_obj_add_event_cb(btn, config_event_handler, LV_EVENT_CLICKED, NULL);
+
+    btn = lv_list_add_button(config_list, LV_SYMBOL_SETTINGS, "System Diagnostics");
     lv_obj_add_event_cb(btn, config_event_handler, LV_EVENT_CLICKED, NULL);
 
     lv_list_add_text(config_list, "");

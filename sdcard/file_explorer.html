@@ -23,15 +23,64 @@
   <button onclick="uploadFile()">⤴ Upload</button>
 </div>
 
+<div id="clipboardBanner" style="display: none; background: #fff3cd; color: #856404; padding: 10px 20px; margin: 10px 20px; border-radius: 8px; border: 1px solid #ffeeba; justify-content: space-between; align-items: center;">
+  <span id="clipboardText" style="font-weight: bold;"></span>
+  <div style="display: flex; gap: 10px;">
+    <button onclick="pasteClipboard()" class="primary">📋 Paste Here</button>
+    <button onclick="clearClipboard()">❌ Cancel</button>
+  </div>
+</div>
+
 <div class="path-display" id="currentPathDisplay">/</div>
 
 <div class="entry header">
-  <div>Name</div><div>Size</div><div>Actions</div><div>Delete</div>
+  <div>Name</div><div>Size</div><div>Actions</div>
 </div>
 <div id="fileList"></div>
 
 <script>
 let currentPath = decodeURIComponent(new URLSearchParams(window.location.search).get('path') || '/');
+window.clipboard = null;
+
+function updateClipboardBanner() {
+  const banner = document.getElementById('clipboardBanner');
+  if (window.clipboard) {
+    document.getElementById('clipboardText').innerText = '✂️ Ready to move: ' + window.clipboard.name;
+    banner.style.display = 'flex';
+  } else {
+    banner.style.display = 'none';
+  }
+}
+
+function clearClipboard() {
+  window.clipboard = null;
+  updateClipboardBanner();
+}
+
+function pasteClipboard() {
+  if (!window.clipboard) return;
+  const from = window.clipboard.path;
+  const to = currentPath.replace(/\/$/, '') + '/' + window.clipboard.name;
+  
+  if (from === to) {
+    alert("Source and destination are the same!");
+    clearClipboard();
+    return;
+  }
+  
+  fetch("/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
+  }).then(resp => {
+    if (resp.ok) {
+      clearClipboard();
+      loadFiles();
+    } else {
+      alert("Move failed!");
+    }
+  });
+}
 
 function updatePathInURL() {
   const url = new URL(window.location.href);
@@ -105,13 +154,25 @@ async function loadFiles() {
       const newName = prompt("New name:", item.name);
       if (!newName || newName === item.name) return;
       const newPath = currentPath.replace(/\/$/, '') + '/' + newName;
-      fetch("/move", {
+      fetch("/rename", {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded" },
         body: `from=${encodeURIComponent(oldPath)}&to=${encodeURIComponent(newPath)}`
       }).then(() => loadFiles());
     };
     actionCell.appendChild(renameBtn);
+
+    // Create cut button
+    const cutBtn = document.createElement('button');
+    cutBtn.innerText = '✂️ Cut';
+    cutBtn.onclick = () => {
+      window.clipboard = {
+        path: currentPath.replace(/\/$/, '') + '/' + item.name,
+        name: item.name
+      };
+      updateClipboardBanner();
+    };
+    actionCell.appendChild(cutBtn);
 
     if (!item.isDir) {
       // Create download button
@@ -136,30 +197,11 @@ async function loadFiles() {
         window.open(`/preview?path=${encodeURIComponent(fullPath)}`, '_blank');
       };
       actionCell.appendChild(previewBtn);
-
-
-    } else {
-      const moveBtn = document.createElement('button');
-      moveBtn.innerText = '↪ Move Here';
-      moveBtn.onclick = () => {
-        const targetDir = currentPath.replace(/\/$/, '') + '/' + item.name;
-        const src = prompt("File to move:");
-        if (src) {
-          const from = currentPath.replace(/\/$/, '') + '/' + src;
-          const to = targetDir + '/' + src;
-          fetch("/move", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: `from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`
-          }).then(() => loadFiles());
-        }
-      };
-      actionCell.appendChild(moveBtn);
     }
 
     // Create delete button
-    const deleteCell = document.createElement('div');
     const delBtn = document.createElement('button');
+    delBtn.className = 'danger';
     delBtn.innerText = '🗑 Delete';
     delBtn.onclick = () => {
       const path = currentPath.replace(/\/$/, '') + '/' + item.name;
@@ -171,29 +213,33 @@ async function loadFiles() {
         }).then(() => loadFiles());
       }
     };
-    deleteCell.appendChild(delBtn);
+    actionCell.appendChild(delBtn);
 
     row.appendChild(nameCell);
     row.appendChild(sizeCell);
     row.appendChild(actionCell);
-    row.appendChild(deleteCell);
 
     container.appendChild(row);
   });
 }
 
-function uploadFile() {
+function uploadFile(file = null) {
   const fileInput = document.getElementById('fileInput');
-  if (!fileInput.files.length) return alert("Select a file first.");
+  const fileToUpload = file || (fileInput.files.length ? fileInput.files[0] : null);
+  if (!fileToUpload) return alert("Select a file first.");
 
   const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
-  formData.append('path', currentPath);
-
-  fetch('/upload', { method: 'POST', body: formData })
+  formData.append('file', fileToUpload);
+  // ESP32 WebServer's upload handler needs the 'path' as a URL parameter to parse it properly during UPLOAD_FILE_START
+  
+  fetch('/upload?path=' + encodeURIComponent(currentPath), { method: 'POST', body: formData })
     .then(resp => resp.text())
     .then(alert)
-    .then(loadFiles);
+    .then(() => {
+        // Clear input after upload
+        fileInput.value = ""; 
+        loadFiles();
+    });
 }
 
 function createFolder() {
@@ -211,7 +257,33 @@ function createFolder() {
     .then(loadFiles);
 }
 
-window.addEventListener('DOMContentLoaded', loadFiles);
+window.addEventListener('DOMContentLoaded', () => {
+  loadFiles();
+  
+  // Drag and Drop functionality
+  const dropZone = document.getElementById('fileList');
+  
+  dropZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    dropZone.style.border = '2px dashed #007bff';
+    dropZone.style.backgroundColor = '#eef5ff';
+  });
+
+  dropZone.addEventListener('dragleave', (e) => {
+    e.preventDefault();
+    dropZone.style.border = '';
+    dropZone.style.backgroundColor = '';
+  });
+
+  dropZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    dropZone.style.border = '';
+    dropZone.style.backgroundColor = '';
+    if (e.dataTransfer.files.length > 0) {
+      uploadFile(e.dataTransfer.files[0]);
+    }
+  });
+});
 </script>
 </body>
 </html>

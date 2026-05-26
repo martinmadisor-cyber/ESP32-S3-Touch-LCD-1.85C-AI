@@ -11,26 +11,47 @@ static lv_style_t style_vu_indic;
 
 void GUI_CreateVUMeter(lv_obj_t* parent) {
     // Initialize style only once
-    lv_style_init(&style_vu_indic);
-    lv_style_set_bg_opa(&style_vu_indic, LV_OPA_COVER);
-    lv_style_set_bg_color(&style_vu_indic, lv_palette_main(LV_PALETTE_RED));     // bottom
-    lv_style_set_bg_grad_color(&style_vu_indic, lv_palette_main(LV_PALETTE_GREEN)); // top
-    lv_style_set_bg_grad_dir(&style_vu_indic, LV_GRAD_DIR_VER);
-    lv_style_set_bg_grad_stop(&style_vu_indic, 128); // midpoint for yellow (optional)
+    static bool style_inited = false;
+    if (!style_inited) {
+        lv_style_init(&style_vu_indic);
+        lv_style_set_bg_opa(&style_vu_indic, LV_OPA_COVER);
+        lv_style_set_bg_color(&style_vu_indic, lv_palette_main(LV_PALETTE_RED));     // bottom
+        lv_style_set_bg_grad_color(&style_vu_indic, lv_palette_main(LV_PALETTE_GREEN)); // top
+        lv_style_set_bg_grad_dir(&style_vu_indic, LV_GRAD_DIR_VER);
+        lv_style_set_bg_grad_stop(&style_vu_indic, 128); // midpoint for yellow (optional)
+        style_inited = true;
+    }
+
+    // Create a clickable, transparent container to group the VU meter bars
+    lv_obj_t* vu_container = lv_obj_create(parent);
+    lv_obj_set_size(vu_container, 46, 80);
+    lv_obj_set_pos(vu_container, 160, 160);
+    lv_obj_set_style_bg_opa(vu_container, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(vu_container, 0, 0);
+    lv_obj_set_style_pad_all(vu_container, 0, 0);
+    lv_obj_clear_flag(vu_container, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(vu_container, LV_OBJ_FLAG_CLICKABLE);
 
     // Left bar
-    vu_left_bar = lv_bar_create(parent);
+    vu_left_bar = lv_bar_create(vu_container);
     lv_obj_set_size(vu_left_bar, 16, 70);
-    lv_obj_set_pos(vu_left_bar, 165, 165);
+    lv_obj_set_pos(vu_left_bar, 5, 5);
     lv_bar_set_range(vu_left_bar, 0, 127);
     lv_obj_add_style(vu_left_bar, &style_vu_indic, LV_PART_INDICATOR);
+    lv_obj_remove_flag(vu_left_bar, LV_OBJ_FLAG_CLICKABLE);
 
     // Right bar
-    vu_right_bar = lv_bar_create(parent);
+    vu_right_bar = lv_bar_create(vu_container);
     lv_obj_set_size(vu_right_bar, 16, 70);
-    lv_obj_set_pos(vu_right_bar, 185, 165);
+    lv_obj_set_pos(vu_right_bar, 25, 5);
     lv_bar_set_range(vu_right_bar, 0, 127);
     lv_obj_add_style(vu_right_bar, &style_vu_indic, LV_PART_INDICATOR);
+    lv_obj_remove_flag(vu_right_bar, LV_OBJ_FLAG_CLICKABLE);
+
+    // Event callback to open Music Spectrum Screen
+    lv_obj_add_event_cb(vu_container, [](lv_event_t* e) {
+        GUI_SwitchToScreen(GUI_CreateMusicSpectrumScreen, &music_spectrum_screen);
+    }, LV_EVENT_CLICKED, NULL);
 }
 
 void GUI_UpdateVUMeter() {
