@@ -2,6 +2,7 @@
 #include "Touch_CST816.h"
 #include "MIC_MSM.h"
 #include "GUI/GUI.h"
+#include "ST77916_WS185_init.h"
 
 Arduino_GFX* gfx;
 
@@ -48,7 +49,7 @@ void Lvgl_Init()
       LCD_D1,    // Data 1 pin (MISO/QSPI)
       LCD_D2,    // Data 2 pin (QSPI)
       LCD_D3,    // Data 3 pin (QSPI)
-      true       // Enable Quad SPI mode
+      false      // Bus is not shared: keep it acquired for the panel
     );
 
     // Initialize ST77916 LCD driver
@@ -59,7 +60,10 @@ void Lvgl_Init()
       0,          // Screen rotation
       true,      // ISP
       SCREEN_WIDTH, 
-      SCREEN_HEIGHT
+      SCREEN_HEIGHT,
+      0, 0, 0, 0, // Column and row offsets
+      st77916_ws185_init_operations,        // Waveshare 1.85C panel init
+      sizeof(st77916_ws185_init_operations)
     );
 
     if (!gfx->begin(QSPI_FREQ)) {
