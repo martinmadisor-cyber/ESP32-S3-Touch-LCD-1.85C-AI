@@ -24,7 +24,7 @@ void GUI_CreateWifiInfoScreen() {
     lv_obj_align(info_list, LV_ALIGN_CENTER, 0, 20);
     lv_obj_set_style_pad_row(info_list, 6, 0);
 
-    lv_font_t* ubuntu_lvfont = lv_tiny_ttf_create_data(ubuntu_font, ubuntu_font_size, 19);
+    lv_font_t* ubuntu_lvfont = lv_tiny_ttf_create_data_ex(ubuntu_font, ubuntu_font_size, 19, LV_FONT_KERNING_NONE, 32);
     static lv_style_t style_wifi_info;
     lv_style_init(&style_wifi_info);
     lv_style_set_text_font(&style_wifi_info, ubuntu_lvfont);

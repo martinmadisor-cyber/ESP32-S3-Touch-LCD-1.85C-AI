@@ -116,25 +116,25 @@ void GUI_Init(Audio& audio) {
 
     // Main clock style HH:MM
     lv_style_init(&style_clock);
-    lv_font_t * font = lv_tiny_ttf_create_data(digital7_mono_ttf, digital7_mono_size, 65);
+    lv_font_t * font = lv_tiny_ttf_create_data_ex(digital7_mono_ttf, digital7_mono_size, 65, LV_FONT_KERNING_NONE, 32);
     lv_style_set_text_font(&style_clock, font);
     lv_style_set_text_color(&style_clock, lv_palette_main(LV_PALETTE_GREEN));
     lv_style_set_text_align(&style_clock, LV_TEXT_ALIGN_CENTER);
 
     // Main clock seconds style
     lv_style_init(&style_seconds);
-    lv_font_t * font_seconds = lv_tiny_ttf_create_data(digital7_mono_ttf, digital7_mono_size, 35);
+    lv_font_t * font_seconds = lv_tiny_ttf_create_data_ex(digital7_mono_ttf, digital7_mono_size, 35, LV_FONT_KERNING_NONE, 32);
     lv_style_set_text_font(&style_seconds, font_seconds);
     lv_style_set_text_color(&style_seconds, lv_palette_main(LV_PALETTE_GREEN));
 
     // Big clock style HH:MM:SS
     lv_style_init(&style_bigclock);
-    lv_font_t * font_bigclock = lv_tiny_ttf_create_data(ubuntu_font, ubuntu_font_size, 72);
+    lv_font_t * font_bigclock = lv_tiny_ttf_create_data_ex(ubuntu_font, ubuntu_font_size, 72, LV_FONT_KERNING_NONE, 32);
     lv_style_set_text_font(&style_bigclock, font_bigclock);
     // lv_style_set_text_color(&style_bigclock, lv_palette_main(LV_PALETTE_LIGHT_GREEN));
 
     lv_style_init(&style_message);
-    lv_font_t * font_message = lv_tiny_ttf_create_data(ubuntu_font, ubuntu_font_size, 26);
+    lv_font_t * font_message = lv_tiny_ttf_create_data_ex(ubuntu_font, ubuntu_font_size, 26, LV_FONT_KERNING_NONE, 32);
     lv_style_set_text_font(&style_message, font_message);
     //lv_style_set_text_font(&style_message, &lv_font_montserrat_26);
     lv_style_set_text_color(&style_message, lv_color_hex(0xAAAAAA));
