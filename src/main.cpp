@@ -27,6 +27,7 @@
 #include "esp_wn_models.h"
 #include "model_path.h"
 #include "config.h"
+#include "dsps_fft2r.h"
 
 // NTP configuration
 const char* ntpServer = "pool.ntp.org";
@@ -419,6 +420,14 @@ void setup() {
 
   // Initialize Audio
   Serial.println("Setup Audio PCM5101");
+  // The spectrum analyser in StereoAudioEqualizer calls dsps_fft2r_fc32()
+  // without ever building the esp-dsp twiddle tables, so the first stream
+  // panics with LoadProhibited inside the FFT. Build them here, before any
+  // audio starts.
+  esp_err_t fftErr = dsps_fft2r_init_fc32(NULL, FFT_SIZE);
+  if (fftErr != ESP_OK) {
+    Serial.printf("dsps_fft2r_init_fc32 failed: %d\n", fftErr);
+  }
   Audio_Init();
 
   // Initialize 
