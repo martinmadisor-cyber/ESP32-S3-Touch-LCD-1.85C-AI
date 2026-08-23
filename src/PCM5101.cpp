@@ -2,6 +2,7 @@
 #include "PCM5101.h"
 #include <EEPROM.h>
 #include "config.h"
+#include "es8311.h"
 
 #define DEFAULT_VOLUME     10      // fallback if uninitialized
 
@@ -24,12 +25,50 @@ uint8_t LoadVolumeFromEEPROM() {
   return vol;
 }
 
+// The ES8311 boots muted and deaf: without this I2C setup it ignores the I2S
+// stream entirely, which is why the speaker stayed silent with a perfectly
+// decoded stream. Taken from Waveshare's own 03_audio_out_no_tf example.
+bool Codec_Init(uint32_t sampleRate) {
+  es8311_handle_t es = es8311_create(I2C_NUM_0, ES8311_ADDRRES_0);
+  if (!es) {
+    Serial.println("[ES8311] create failed");
+    return false;
+  }
+
+  const es8311_clock_config_t clk = {
+    .mclk_inverted = false,
+    .sclk_inverted = false,
+    .mclk_from_mclk_pin = true,
+    .mclk_frequency = sampleRate * 256,   // the I2S driver emits MCLK at 256x
+    .sample_frequency = sampleRate
+  };
+
+  if (es8311_init(es, &clk, ES8311_RESOLUTION_16, ES8311_RESOLUTION_16) != ESP_OK) {
+    Serial.println("[ES8311] init failed");
+    return false;
+  }
+  es8311_voice_volume_set(es, 80, NULL);
+  es8311_microphone_config(es, false);
+
+  // Enable the speaker power amplifier.
+  pinMode(PA_ENABLE_PIN, OUTPUT);
+  digitalWrite(PA_ENABLE_PIN, HIGH);
+
+  Serial.printf("[ES8311] codec ready at %u Hz\n", sampleRate);
+  return true;
+}
+
 void Audio_Init() {
   EEPROM.begin(EEPROM_SIZE);
   currentVolume = LoadVolumeFromEEPROM();
 
+  // The audio library resamples everything to 48 kHz stereo and pins the I2S
+  // clock there, so the codec must be configured for 48 kHz too or the master
+  // clock ratio is wrong and nothing comes out.
+  Codec_Init(48000);
+
   // Audio
-  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT, I2S_MCLK);
   audio.setVolume(currentVolume); // 0...21  
 
   // Set up a hardware timer using ESP-IDF's esp_timer to periodically call the audio.loop() function,
@@ -62,7 +101,8 @@ void Audio_Deinit() {
 void Audio_Reinit() {
   // Reconstruct Audio object in-place (same memory as the global `audio`)
   new (&audio) Audio();
-  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT);
+  Codec_Init(48000);
+  audio.setPinout(I2S_BCLK, I2S_LRC, I2S_DOUT, I2S_MCLK);
   audio.setVolume(currentVolume);
 
   // Re-enable the timer callback

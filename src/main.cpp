@@ -430,9 +430,14 @@ void setup() {
   }
   Audio_Init();
 
-  // Initialize 
-  Serial.println("Setup Microphone");
-  MIC_Init();
+  // Initialize
+  // MIC_MSM drives GPIO15 as bit clock and GPIO2 as word select, but on this
+  // board those pins are the codec master clock and the speaker amplifier
+  // enable. Starting it steals both and the speaker goes silent again. The
+  // microphone on this variant is reached through the ES8311 itself, so this
+  // needs porting before it can be re-enabled.
+  Serial.println("Microphone disabled: pins belong to the ES8311 codec");
+  // MIC_Init();
   gfx->setCursor(75, 160+40);
   gfx->println("Audio started");
 
