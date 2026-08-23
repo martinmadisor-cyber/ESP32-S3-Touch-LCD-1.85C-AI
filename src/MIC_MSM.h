@@ -10,10 +10,14 @@
 #include "AIAssistant.h"
 #include "Chatbot.h"
 
-#define I2S_PIN_BCK   15   // Bit clock (input from ESP32 to mic)
-#define I2S_PIN_WS    2    // Word select (LRCK)
-#define I2S_PIN_DOUT  -1   // Not used (we're not sending)
-#define I2S_PIN_DIN   39   // Data line (input from mic to ESP32)
+// The microphone on this board is an ES7210 ADC sharing the I2S bus with the
+// ES8311 output codec, not a standalone I2S mic. GPIO15 and GPIO2 belong to
+// the amplifier enable and the codec master clock.
+#define I2S_PIN_BCK   48   // Bit clock
+#define I2S_PIN_WS    38   // Word select (LRCK)
+#define I2S_PIN_DOUT  47   // Shared with the output codec
+#define I2S_PIN_DIN   39   // Data from the ES7210
+#define I2S_PIN_MCK   2    // Master clock, required by the ES7210
 
 typedef enum {
     MIC_MODE_TO_FILE = 0,        // Save WAV to SD

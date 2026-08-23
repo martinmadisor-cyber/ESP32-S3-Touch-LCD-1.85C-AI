@@ -1,4 +1,6 @@
 #include "MIC_MSM.h"
+#include "es7210.h"
+#include "PCM5101.h"
 #include "HttpServer.h" 
 // English wakeword : Hi ESP！！！！
 
@@ -34,11 +36,11 @@ enum {
 };
 
 static const sr_cmd_t sr_commands[] = {
-  {0, "Turn on the backlight", "TkN nN jc BaKLiT"},                 // English
-  {1, "Turn off the backlight", "TkN eF jc BaKLiT"},                // English
-  {2, "backlight is brightest", "BaKLiT gZ BRiTcST"},               // English
-  {3, "backlight is darkest", "BaKLiT gZ DnRKcST"},                 // English
-  {4, "play music", "PLd MYoZgK"},                                  // English
+  {0, "Turn on the backlight"},                 // English
+  {1, "Turn off the backlight"},                // English
+  {2, "backlight is brightest"},                // English
+  {3, "backlight is darkest"},                  // English
+  {4, "play music"},                             // English
 };
 
 bool play_Music_Flag = 0;
@@ -105,13 +107,51 @@ void Awaken_Event(sr_event_t event, int command_id, int phrase_id) {
 }
 
 
+// The ES7210 is deaf until configured over I2C, the same way the ES8311 is
+// mute until configured. Values taken from Waveshare's 08_esp_sr example.
+static es7210_dev_handle_t es7210_handle = NULL;
+
+static bool Mic_CodecInit() {
+  if (es7210_handle) return true;
+
+  es7210_i2c_config_t i2c_conf = { .i2c_addr = 0x40 };
+  if (es7210_new_codec(&i2c_conf, &es7210_handle) != ESP_OK) {
+    Serial.println("[MIC] es7210_new_codec failed");
+    return false;
+  }
+
+  es7210_codec_config_t conf = {};
+  conf.i2s_format = ES7210_I2S_FMT_I2S;
+  conf.mclk_ratio = 256;
+  conf.sample_rate_hz = 16000;
+  conf.bit_width = ES7210_I2S_BITS_16B;
+  conf.mic_bias = ES7210_MIC_BIAS_2V87;
+  conf.mic_gain = ES7210_MIC_GAIN_33DB;
+  conf.flags.tdm_enable = false;
+  if (es7210_config_codec(es7210_handle, &conf) != ESP_OK) {
+    Serial.println("[MIC] es7210_config_codec failed");
+    return false;
+  }
+  es7210_config_volume(es7210_handle, 18);
+  Serial.println("[MIC] ES7210 ready");
+  return true;
+}
+
 void _MIC_Init() {
   Serial.printf("MIC Init\n");
-  i2s.setPins(I2S_PIN_BCK, I2S_PIN_WS, I2S_PIN_DOUT, I2S_PIN_DIN);
+
+  if (!Mic_CodecInit()) return;
+
+  // Input and output share one I2S bus at different rates, so playback has to
+  // let go of it before recording can start.
+  Audio_Deinit();
+
+  i2s.setPins(I2S_PIN_BCK, I2S_PIN_WS, I2S_PIN_DOUT, I2S_PIN_DIN, I2S_PIN_MCK);
   i2s.setTimeout(1000);
 
-  if (!i2s.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_MONO, I2S_STD_SLOT_RIGHT)) {
+  if (!i2s.begin(I2S_MODE_STD, 16000, I2S_DATA_BIT_WIDTH_16BIT, I2S_SLOT_MODE_STEREO)) {
     Serial.printf("[MIC_Init] I2S begin failed\n");
+    Audio_Reinit();
     return;
   }
 }
@@ -139,7 +179,9 @@ void MIC_SR_Stop() {
 
 
 void MICTask(void *parameter) {
-  _MIC_Init();
+  // Only bring the codec up over I2C here. Taking the I2S bus at boot would
+  // steal it from playback, which shares it.
+  Mic_CodecInit();
   esp_task_wdt_add(NULL);
   while(1){
     esp_task_wdt_reset();
@@ -210,16 +252,24 @@ static void finalizeWavFile(File &file) {
     uint32_t fileSize = file.size();
     if (fileSize < 44) return;  // File too short to be valid
 
-    uint32_t chunkSize = fileSize - 8;
-    uint32_t dataSize  = fileSize - 44;
-
-    file.seek(4);
-    writeLE32(file, chunkSize);
-
-    file.seek(40);
-    writeLE32(file, dataSize);
-
+    String path = file.path();
     file.flush();
+    file.close();
+
+    // Reopen for update. Seeking on the append-mode handle appended instead of
+    // rewriting, so both size fields stayed at their zero placeholders and the
+    // file was not a valid WAV.
+    File f = SD_MMC.open(path.c_str(), "r+");
+    if (!f) {
+        Serial.printf("[MIC] cannot reopen %s to finalize header\n", path.c_str());
+        return;
+    }
+    f.seek(4);
+    writeLE32(f, fileSize - 8);
+    f.seek(40);
+    writeLE32(f, fileSize - 44);
+    f.flush();
+    f.close();
 }
 
 // This works and it is really good 
@@ -266,12 +316,15 @@ static void MIC_RecordTask(void *parameter) {
 
     while (isRecording) {
         size_t bytesRead = i2s.readBytes((char *)rawBuffer, sizeof(rawBuffer));
-        size_t sampleCount = bytesRead / sizeof(int32_t);
+        // The ES7210 delivers 16-bit stereo frames, so every 4 bytes carry two
+        // samples, not one 32-bit sample. Reading them as 32-bit is what turned
+        // recordings into a screech. Keep the left channel.
+        const int16_t* stereo = (const int16_t*)rawBuffer;
+        size_t sampleCount = bytesRead / (2 * sizeof(int16_t));
         if (sampleCount == 0) continue;
 
-        // Convert to float (assuming 24-bit left-justified in 32-bit)
         for (size_t i = 0; i < sampleCount; ++i) {
-            floatSamples[i] = (float)(rawBuffer[i] >> 16);
+            floatSamples[i] = (float)stereo[i * 2];
         }
        
         //copy floatSamples to filtered as initial
@@ -288,10 +341,12 @@ static void MIC_RecordTask(void *parameter) {
         float rms = sqrtf(sumSquares / sampleCount);
 
         // AGC gain update
-        if (rms > 10.0f) { // Noise floor threshold
+        if (rms > 1500.0f) { // Noise floor threshold (calibrated for the ES7210)
             float desiredGain = targetLevel / rms;
             // Cap maximum gain to prevent amplifying pure static into deafening noise
-            if (desiredGain > 8.0f) desiredGain = 8.0f;
+            // Hardware gain already brings voice near half scale; amplifying
+            // again clipped every sample to 32748. Only allow attenuation.
+            if (desiredGain > 1.0f) desiredGain = 1.0f;
             
             if (desiredGain > agcGain)
                 agcGain += agcAttack * (desiredGain - agcGain);
@@ -397,6 +452,7 @@ static void MIC_RecordTask(void *parameter) {
     // heap_caps_free(streamBuffer);
 
     i2s.end();
+    Audio_Reinit();
     // delay(50);
     // i2s.~I2SClass();
     // new (&i2s) I2SClass();
@@ -488,7 +544,7 @@ void MIC_StartRecording(const char* filename, uint32_t rate, uint8_t ch, uint16_
 
     // Remove old file if it exists
     SD_MMC.remove(filename);
-    wavFile = SD_MMC.open(filename, FILE_WRITE);
+    wavFile = SD_MMC.open(filename, "w+");
     if (!wavFile) {
       Serial.println("[ERR] Failed to open file for writing");
       return;
@@ -533,14 +589,19 @@ void MIC_StartRecording(const char* filename,
   Serial.printf("[MIC] Starting recording: %s at %luHz, %dch, %dbit, mode:%d\n",
                 filename, rate, ch, bits, (int)mode);
 
-  // Configure and start ESP_I2S
-  i2s.setPins(I2S_PIN_BCK, I2S_PIN_WS, I2S_PIN_DOUT, I2S_PIN_DIN);
+  // Playback owns the shared I2S bus, so it has to let go first.
+  if (!Mic_CodecInit()) return;
+  Audio_Deinit();
+
+  // Configure and start ESP_I2S. The ES7210 needs MCLK and delivers 16-bit
+  // stereo, unlike the standalone mic this code was written for.
+  i2s.setPins(I2S_PIN_BCK, I2S_PIN_WS, I2S_PIN_DOUT, I2S_PIN_DIN, I2S_PIN_MCK);
   i2s.setTimeout(1000);
 
-  // Mic outputs 32-bit data format, Mono, Right Channel only
-  if (!i2s.begin(I2S_MODE_STD, rate, I2S_DATA_BIT_WIDTH_32BIT,
-                 I2S_SLOT_MODE_MONO, I2S_STD_SLOT_RIGHT)) {
+  if (!i2s.begin(I2S_MODE_STD, rate, I2S_DATA_BIT_WIDTH_16BIT,
+                 I2S_SLOT_MODE_STEREO)) {
     Serial.println("[ERR] I2S begin() failed");
+    Audio_Reinit();
     return;
   }
 
@@ -560,7 +621,7 @@ void MIC_StartRecording(const char* filename,
       }
 
       SD_MMC.remove(filename);
-      wavFile = SD_MMC.open(filename, FILE_WRITE);
+      wavFile = SD_MMC.open(filename, "w+");
       if (!wavFile) {
         Serial.println("[ERR] Failed to open file for writing");
         i2s.end();

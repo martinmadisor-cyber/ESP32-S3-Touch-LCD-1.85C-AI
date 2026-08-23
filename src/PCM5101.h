@@ -14,6 +14,8 @@
 extern Audio audio;
 
 void Audio_Init();
+bool Codec_Init(uint32_t sampleRate);
+void Codec_ApplyPendingRate();
 void Audio_Deinit();   // Destroy Audio object, release I2S (for chatbot takeover)
 void Audio_Reinit();   // Reconstruct Audio object, reclaim I2S
 void SetVolume(uint8_t vol);

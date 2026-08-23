@@ -3,6 +3,8 @@
 #include <EEPROM.h>
 #include "config.h"
 #include "es8311.h"
+#include "ESP_I2S.h"
+#include "SD_MMC.h"
 
 #define DEFAULT_VOLUME     10      // fallback if uninitialized
 
@@ -29,7 +31,10 @@ uint8_t LoadVolumeFromEEPROM() {
 // stream entirely, which is why the speaker stayed silent with a perfectly
 // decoded stream. Taken from Waveshare's own 03_audio_out_no_tf example.
 bool Codec_Init(uint32_t sampleRate) {
-  es8311_handle_t es = es8311_create(I2C_NUM_0, ES8311_ADDRRES_0);
+  // Created once: re-creating it on every sample rate change leaked the handle
+  // and eventually took the board down.
+  static es8311_handle_t es = NULL;
+  if (!es) es = es8311_create(I2C_NUM_0, ES8311_ADDRRES_0);
   if (!es) {
     Serial.println("[ES8311] create failed");
     return false;
@@ -57,6 +62,29 @@ bool Codec_Init(uint32_t sampleRate) {
   Serial.printf("[ES8311] codec ready at %u Hz\n", sampleRate);
   return true;
 }
+
+
+// The audio library calls this whenever it reprograms the I2S clock. The
+// ES8311 cannot follow the bus on its own: configured for 48 kHz while the bus
+// runs at 16 kHz it puts out noise at full volume, which is what playing a
+// recorded voice file sounded like.
+static volatile uint32_t pendingCodecRate = 0;
+
+extern "C" void Audio_OnI2SRateChanged(uint32_t rate) {
+  // Runs inside the audio task. Touching I2C from here fights the GUI and the
+  // RTC for the same bus, so just record it and let loop() apply it.
+  pendingCodecRate = rate;
+}
+
+// Called from loop(): applies a pending sample rate change to the codec.
+void Codec_ApplyPendingRate() {
+  static uint32_t currentRate = 48000;
+  uint32_t rate = pendingCodecRate;
+  if (rate == 0 || rate == currentRate) return;
+  currentRate = rate;
+  Codec_Init(rate);
+}
+
 
 void Audio_Init() {
   EEPROM.begin(EEPROM_SIZE);
