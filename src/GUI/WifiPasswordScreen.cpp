@@ -44,17 +44,18 @@ void update_pass_label() {
 }
 
 void store_wifi_password_to_eeprom(const String& pass) {
-    for (int i = 0; i < EEPROM_SIZE; i++) {
+    for (int i = 0; i < EEPROM_WIFI_PASS_LEN; i++) {
         EEPROM.write(EEPROM_WIFI_PASS_ADDR + i, i < pass.length() ? pass[i] : 0);
     }
     EEPROM.commit();
 }
 
 void read_wifi_password_from_eeprom(String& out_buf) {
-    char buf[EEPROM_SIZE] = {0};
-    for (int i = 0; i < EEPROM_SIZE; i++) {
-        buf[i] = EEPROM.read(EEPROM_WIFI_PASS_ADDR + i);
-        if (buf[i] == '\0') break;
+    char buf[EEPROM_WIFI_PASS_LEN] = {0};
+    for (int i = 0; i < EEPROM_WIFI_PASS_LEN - 1; i++) {
+        const uint8_t value = EEPROM.read(EEPROM_WIFI_PASS_ADDR + i);
+        if (value == '\0' || value == 0xFF) break;
+        buf[i] = static_cast<char>(value);
     }
     out_buf = String(buf);
 }
@@ -131,6 +132,10 @@ void rebuild_keyboard_keys() {
         lv_obj_add_event_cb(key_btn, [](lv_event_t* e) {
             lv_obj_t* label = lv_obj_get_child((const lv_obj_t*)lv_event_get_target(e), 0);
             const char* txt = lv_label_get_text(label);
+            if (current_pass.length() >= EEPROM_WIFI_PASS_LEN - 1) {
+                lv_label_set_text(status_label, "Password is too long.");
+                return;
+            }
             current_pass += txt;
 
             // Cancel previous mask timer if active

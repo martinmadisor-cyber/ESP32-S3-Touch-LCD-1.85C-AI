@@ -120,7 +120,6 @@ typedef enum {
     SCREEN_MUSIC_SPECTRUM    // For Music Spectrum
 } ScreenIndex;
 
-extern volatile bool last_wifi_connected;
 extern volatile bool backend_connected;
 
 extern lv_group_t* global_input_group; 

@@ -35,9 +35,11 @@
 
 // EEPROM configuration
 #define EEPROM_SIZE 128
-#define EEPROM_VOLUME_ADDR 0             // EEPROM address where volume is stored
-#define EEPROM_WIFI_SSID_ADDR 0 + 4      // 33 bytes for SSID
-#define EEPROM_WIFI_PASS_ADDR 64 + 4
+#define EEPROM_VOLUME_ADDR 0
+#define EEPROM_WIFI_SSID_ADDR 4
+#define EEPROM_WIFI_SSID_LEN 33          // IEEE 802.11 SSID: 32 bytes + terminator
+#define EEPROM_WIFI_PASS_ADDR 68
+#define EEPROM_WIFI_PASS_LEN (EEPROM_SIZE - EEPROM_WIFI_PASS_ADDR)
 
 
 #endif // CONFIG_H

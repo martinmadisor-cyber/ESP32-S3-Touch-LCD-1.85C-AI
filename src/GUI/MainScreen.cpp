@@ -211,15 +211,8 @@ void GUI_UpdateMainScreen(const struct tm& rtcTime) {
     if (wifi_icon){
         // Update WiFi icon color based on connection status
         bool connected = WiFi.status() == WL_CONNECTED;
-        if (connected != last_wifi_connected) {
-            lv_image_set_src(wifi_icon, LV_SYMBOL_WIFI "");
-            lv_obj_set_style_text_color(wifi_icon, lv_color_hex(0x00aa00), 0);
-        } else {
-            lv_image_set_src(wifi_icon, LV_SYMBOL_WIFI "");
-            lv_obj_set_style_text_color(wifi_icon, lv_color_hex(0xff0000), 0);
-        }
-    } else {
-        lv_obj_set_style_text_color(wifi_icon, lv_color_hex(0x999999), 0);
+        lv_image_set_src(wifi_icon, LV_SYMBOL_WIFI "");
+        lv_obj_set_style_text_color(wifi_icon, lv_color_hex(connected ? 0x00aa00 : 0xff0000), 0);
     }
     if (backend_status) {
         // Update backend status icon color based on connection status

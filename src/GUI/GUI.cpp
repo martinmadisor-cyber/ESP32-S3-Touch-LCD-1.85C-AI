@@ -58,7 +58,6 @@ static QueueHandle_t msgQueue = nullptr;
 static String last_msg;
 static bool is_scrolling = false;
 
-volatile bool last_wifi_connected = false;
 volatile bool backend_connected = false;
 
 // --- Optional: filename (e.g., from assistant) ---

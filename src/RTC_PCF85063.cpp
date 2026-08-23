@@ -38,6 +38,21 @@ void RTC_SetTime(struct tm* t) {
   Serial.println("[RTC] Failed to set UTC time after retries");
 }
 
+// Epoch seconds from a UTC calendar date. timegm() is not available in this
+// toolchain and mktime() would apply the local time zone, which is wrong for
+// the RTC registers.
+static time_t utcToEpoch(const struct tm& t) {
+  int y = t.tm_year + 1900;
+  unsigned m = t.tm_mon + 1;
+  y -= (m <= 2);
+  const int era = (y >= 0 ? y : y - 399) / 400;
+  const unsigned yoe = (unsigned)(y - era * 400);
+  const unsigned doy = (153 * (m + (m > 2 ? -3 : 9)) + 2) / 5 + t.tm_mday - 1;
+  const unsigned doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+  const long days = era * 146097L + (long)doe - 719468L;
+  return days * 86400L + t.tm_hour * 3600L + t.tm_min * 60L + t.tm_sec;
+}
+
 bool RTC_GetTime(struct tm* t) {
   Wire.beginTransmission(PCF85063_ADDRESS);
   Wire.write(0x04);
@@ -59,9 +74,9 @@ bool RTC_GetTime(struct tm* t) {
   t->tm_mon  = bcdToDec(Wire.read() & 0x1F) - 1;
   t->tm_year = bcdToDec(Wire.read()) + 100;
 
-  // Convert to epoch and apply local offset
-  time_t utc = mktime(t);
-  utc += 3600;  // Add timezone offset here (e.g. +1h for CET)
+  // The registers hold UTC, so convert them as UTC and let the C library
+  // apply the configured time zone. mktime() would read them as local time.
+  time_t utc = utcToEpoch(*t);
   struct tm *local = localtime(&utc);
   *t = *local;
 

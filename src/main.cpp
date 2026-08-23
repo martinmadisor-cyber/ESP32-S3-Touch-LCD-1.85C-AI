@@ -4,13 +4,17 @@
 #include <WiFi.h>
 #include <Wire.h>
 #include <time.h>
+#include <EEPROM.h>
 #include "lvgl.h"
 #include "LVGL_ST77916.h"
 #include "RTC_PCF85063.h"
 #include "Audio.h"
 #include "PCM5101.h"
 #include "GUI/GUI.h"
+#include "GUI/WifiDiscoveryScreen.h"
+#include "GUI/WifiPasswordScreen.h"
 #include "MIC_MSM.h"
+#include "TCA9554PWR.h"
 #include "Touch_CST816.h"
 #include "HttpServer.h"
 #include "SD_Card.h"
@@ -26,8 +30,29 @@
 
 // NTP configuration
 const char* ntpServer = "pool.ntp.org";
-const long gmtOffset_sec = 3600;      // Adjust GMT offset (3600 for CET)
-const int daylightOffset_sec = 3600;  // DST offset (adjust as needed)
+// America/Santiago: UTC-4, UTC-3 in summer, switching on the first Saturday
+// of September and of April. POSIX form so DST is handled by the C library.
+const char* timeZone = "<-04>4<-03>,M9.1.6/24,M4.1.6/24";
+
+static bool ntpStarted = false;
+static bool ntpSynced = false;
+
+// Start the SNTP client. It keeps running in the background once launched.
+static void StartNtp() {
+  if (ntpStarted) return;
+  configTzTime(timeZone, ntpServer);
+  ntpStarted = true;
+}
+
+// Copy the network time into the RTC once SNTP has actually answered.
+static bool SyncRtcFromNtp(uint32_t waitMs) {
+  struct tm timeinfo;
+  if (!getLocalTime(&timeinfo, waitMs)) return false;
+  if (timeinfo.tm_year + 1900 < 2020) return false;  // still the default clock
+  RTC_SetTime(&timeinfo);
+  ntpSynced = true;
+  return true;
+}
 
 TaskHandle_t guiTaskHandle = NULL;
 // guiTaskStackSize = 8 * 1024
@@ -285,6 +310,14 @@ void setup() {
   Wire.begin(11, 10, 400000);
   Serial.println("Starting setup...");
 
+  // The 1.85C panel reset is connected through the TCA9554 expander.
+  // Drive it explicitly before the ST77916 receives its software init sequence.
+  TCA9554PWR_Init(0x00);
+  Set_EXIO(EXIO_PIN2, Low);
+  delay(120);
+  Set_EXIO(EXIO_PIN2, High);
+  delay(200);
+
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   // Initialize LCD
@@ -294,42 +327,76 @@ void setup() {
   Touch_Init();
   Serial.println("Touch Initialized!");
 
-  // Connect to WiFi
+  EEPROM.begin(EEPROM_SIZE);
+  String storedSsid;
+  String storedPassword;
+  read_wifi_ssid_from_eeprom(storedSsid);
+  read_wifi_password_from_eeprom(storedPassword);
+
+  const bool hasStoredCredentials = !storedSsid.isEmpty() && !storedPassword.isEmpty();
+  const bool hasBuildCredentials = String(WIFI_SSID).length() > 0;
+  const bool hasWifiCredentials = hasStoredCredentials || hasBuildCredentials;
+  const char* wifiSsid = hasStoredCredentials ? storedSsid.c_str() : WIFI_SSID;
+  const char* wifiPassword = hasStoredCredentials ? storedPassword.c_str() : WIFI_PASSWORD;
+
+  // Connect to WiFi (bounded so a missing network never blocks GUI init)
   gfx->setCursor(75, 40+40);
   gfx->println("Connecting WiFi...");
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  if (hasWifiCredentials) {
+    WiFi.begin(wifiSsid, wifiPassword);
+  } else {
+    // Start the WiFi stack even before credentials are configured. The HTTP and
+    // WebSocket servers require its event loop, while the Config screen can add
+    // credentials later without rebooting.
+    WiFi.mode(WIFI_STA);
+    Serial.println("WiFi is not configured - use Config > WiFi");
+    gfx->setCursor(75, 70+40);
+    gfx->println("WiFi not configured");
+  }
   Serial.print("Connecting WiFi");
-  while (WiFi.status() != WL_CONNECTED) {
+  const unsigned long wifiConnectStartMs = millis();
+  const unsigned long wifiConnectTimeoutMs = 20000;  // 20s safety cap
+  while (hasWifiCredentials && WiFi.status() != WL_CONNECTED) {
     delay(200);
     Serial.print(".");
+    if (millis() - wifiConnectStartMs >= wifiConnectTimeoutMs) {
+      Serial.println();
+      Serial.println("WiFi connection timeout - continuing without network");
+      gfx->setCursor(75, 70+40);
+      gfx->println("WiFi Failed (timeout)");
+      break;
+    }
   }
-  Serial.println("\nWiFi Connected!");
-  Serial.print("IP Address: ");
-  IPAddress ip = WiFi.localIP();
-  Serial.println(ip);
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\nWiFi Connected!");
+    Serial.print("IP Address: ");
+    IPAddress ip = WiFi.localIP();
+    Serial.println(ip);
 
-  gfx->setCursor(75, 70+40);
-  gfx->print("WiFi Connected");
-  gfx->setCursor(75, 100+40);
-  gfx->println(ip.toString());
+    gfx->setCursor(75, 70+40);
+    gfx->print("WiFi Connected");
+    gfx->setCursor(75, 100+40);
+    gfx->println(ip.toString());
 
-  // Fetch NTP time once
-  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
-  struct tm timeinfo;
-  if (getLocalTime(&timeinfo)) {
-    Serial.println("NTP Time fetched!");
-    RTC_SetTime(&timeinfo);
-    char timeStr[16];
-    snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d",
-             timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    // Fetch NTP time. If it is not ready yet, loop() keeps retrying.
+    StartNtp();
+    struct tm timeinfo;
+    if (SyncRtcFromNtp(5000) && getLocalTime(&timeinfo, 100)) {
+      Serial.println("NTP Time fetched!");
+      char timeStr[16];
+      snprintf(timeStr, sizeof(timeStr), "%02d:%02d:%02d",
+               timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
 
-    gfx->setCursor(75, 130+40);
-    gfx->print("NTP Synced: ");
-    gfx->println(timeStr);
+      gfx->setCursor(75, 130+40);
+      gfx->print("NTP Synced: ");
+      gfx->println(timeStr);
+    } else {
+      Serial.println("NTP not ready, will retry from loop");
+      gfx->setCursor(75, 130+40);
+      gfx->println("NTP pending...");
+    }
   } else {
-    Serial.println("NTP Failed, using RTC");
-    gfx->setCursor(75, 130+40);
-    gfx->println("NTP Failed!");
+    Serial.println("WiFi not available - skipping NTP sync");
   }
 
   // Initialize sd card
@@ -426,6 +493,12 @@ void loop() {
 
         // Check alarms every minute
         CheckAlarms();
+
+        // WiFi may come up after boot, so keep trying until the clock is set.
+        if (!ntpSynced && WiFi.status() == WL_CONNECTED) {
+            StartNtp();
+            if (SyncRtcFromNtp(200)) Serial.println("NTP Time fetched (retry)!");
+        }
     }
 
     // Check if the backlight should be turned off

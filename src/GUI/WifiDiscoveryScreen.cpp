@@ -8,17 +8,18 @@ int ssid_count = -1;
 lv_obj_t *wifi_list = nullptr;
 
 void store_wifi_ssid_to_eeprom(const String& ssid) {
-    for (int i = 0; i < 64; i++) {
+    for (int i = 0; i < EEPROM_WIFI_SSID_LEN; i++) {
         EEPROM.write(EEPROM_WIFI_SSID_ADDR + i, i < ssid.length() ? ssid[i] : 0);
     }
+    EEPROM.commit();
 }
 
 void read_wifi_ssid_from_eeprom(String& ssid) {
     ssid.clear();
-    for (int i = 0; i < 64; i++) {
-        char c = EEPROM.read(EEPROM_WIFI_SSID_ADDR + i);
-        if (c == '\0') break;
-        ssid += c;
+    for (int i = 0; i < EEPROM_WIFI_SSID_LEN - 1; i++) {
+        const uint8_t value = EEPROM.read(EEPROM_WIFI_SSID_ADDR + i);
+        if (value == '\0' || value == 0xFF) break;
+        ssid += static_cast<char>(value);
     }
 }
 
