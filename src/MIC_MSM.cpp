@@ -589,8 +589,19 @@ void MIC_StartRecording(const char* filename,
   Serial.printf("[MIC] Starting recording: %s at %luHz, %dch, %dbit, mode:%d\n",
                 filename, rate, ch, bits, (int)mode);
 
-  // Playback owns the shared I2S bus, so it has to let go first.
+  // Everything below runs on the LVGL task, which is why the screen used to
+  // freeze for seconds while holding the button: releasing the shared I2S bus
+  // and reprogramming the codec over I2C are slow. Hand that to the recording
+  // task and return immediately so the interface stays alive.
   if (!Mic_CodecInit()) return;
+
+  // Stop whatever is playing first. Input and output share one I2S bus, and
+  // grabbing it mid-playback left the microphone returning zero bytes.
+  if (audio.isRunning()) {
+    audio.stopSong();
+    vTaskDelay(pdMS_TO_TICKS(120));
+  }
+
   Audio_Deinit();
 
   // Configure and start ESP_I2S. The ES7210 needs MCLK and delivers 16-bit

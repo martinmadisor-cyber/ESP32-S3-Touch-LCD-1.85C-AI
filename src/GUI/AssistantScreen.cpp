@@ -30,7 +30,7 @@ void GUI_CreateAssistantScreen() {
         filename = generateRotatingFileName();
         lv_obj_set_style_bg_color(btn, lv_palette_main(LV_PALETTE_RED), 0);
 
-        MIC_StartRecording(filename.c_str(), 16000, 1, 16, MIC_MODE_TO_AI_CLIENT);
+        MIC_StartRecording(filename.c_str(), 16000, 1, 16, MIC_MODE_TO_FILE);
     }, LV_EVENT_PRESSED, NULL);
 
     // On release: stop + upload recording
@@ -41,15 +41,48 @@ void GUI_CreateAssistantScreen() {
         lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_LIGHT_BLUE, 2), 0);
         delay(10);
 
-        // No upload task: in assistant mode the audio already went out over
-        // the WebSocket while you were holding the button.
+        // Copy filename for task
+        char* fname = (char*)pvPortMalloc(filename.length() + 1);
+        strcpy(fname, filename.c_str());
+
+        xTaskCreatePinnedToCore(
+            UploadFileTask,
+            "UploadFileTask",
+            8192,
+            fname,
+            1,
+            NULL,
+            1
+        );
     }, LV_EVENT_RELEASED, NULL);
 
     // --- STREAM button ---
-    // The small STREAM button used to be the only one wired to the assistant
-    // while the big SPEAK button just recorded to the card. Now SPEAK does the
-    // talking, so the duplicate is gone.
+    lv_obj_t* stream_btn = lv_button_create(assistant_screen);
+    lv_obj_set_size(stream_btn, 120, 50);
+    lv_obj_align(stream_btn, LV_ALIGN_TOP_MID, 0, 20);
+    lv_obj_set_style_bg_color(stream_btn, lv_palette_main(LV_PALETTE_GREEN), 0);
 
+    lv_obj_t* stream_label = lv_label_create(stream_btn);
+    lv_label_set_text(stream_label, "STREAM");
+    lv_obj_center(stream_label);
+
+    lv_obj_add_event_cb(stream_btn, [](lv_event_t* e) {
+        lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
+        filename = generateRotatingFileName();
+        Serial.printf("[STREAM] Start streaming: %s\n", filename.c_str());
+        lv_obj_set_style_bg_color(btn, lv_palette_main(LV_PALETTE_RED), 0);
+
+        MIC_StartRecording(filename.c_str(), 16000, 1, 16, MIC_MODE_TO_AI_CLIENT);
+    }, LV_EVENT_PRESSED, NULL);
+
+    lv_obj_add_event_cb(stream_btn, [](lv_event_t* e) {
+        lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
+        Serial.println("[STREAM] Stop streaming");
+        MIC_StopRecording();
+        lv_obj_set_style_bg_color(btn, lv_palette_main(LV_PALETTE_GREEN), 0);
+    }, LV_EVENT_RELEASED, NULL);
+
+    // --- Back button ---
     lv_obj_t* back_btn = lv_button_create(assistant_screen);
     lv_obj_set_size(back_btn, 260, 50);
     lv_obj_set_pos(back_btn, 55, 315);
