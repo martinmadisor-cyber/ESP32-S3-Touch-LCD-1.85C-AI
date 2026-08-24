@@ -12,10 +12,14 @@ void GUI_CreateAssistantScreen() {
     lv_obj_set_scrollbar_mode(assistant_screen, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_style_bg_color(assistant_screen, lv_palette_main(LV_PALETTE_LIGHT_BLUE), 0);
 
-    // --- Main SPEAK button ---
+    // --- The one button: hold it, talk, let go ---
+    // There used to be a second, small STREAM button. Both did the same job
+    // through different paths; only the streaming one reached the assistant,
+    // so the big button now does that and the small one is gone.
     lv_obj_t* speak_btn = lv_button_create(assistant_screen);
-    lv_obj_set_size(speak_btn, 210, 210);
+    lv_obj_set_size(speak_btn, 250, 250);
     lv_obj_center(speak_btn);
+    lv_obj_set_style_radius(speak_btn, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(speak_btn, lv_palette_darken(LV_PALETTE_LIGHT_BLUE, 2), 0);
     lv_obj_set_style_bg_opa(speak_btn, LV_OPA_COVER, 0);
 
@@ -24,49 +28,8 @@ void GUI_CreateAssistantScreen() {
     lv_obj_set_style_text_font(label, &lv_font_montserrat_40, 0);
     lv_obj_center(label);
 
-    // On press: start recording
+    // On press: stream the microphone straight to the assistant
     lv_obj_add_event_cb(speak_btn, [](lv_event_t* e) {
-        lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
-        filename = generateRotatingFileName();
-        lv_obj_set_style_bg_color(btn, lv_palette_main(LV_PALETTE_RED), 0);
-
-        MIC_StartRecording(filename.c_str(), 16000, 1, 16, MIC_MODE_TO_FILE);
-    }, LV_EVENT_PRESSED, NULL);
-
-    // On release: stop + upload recording
-    lv_obj_add_event_cb(speak_btn, [](lv_event_t* e) {
-        lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
-        Serial.println("Stop and play recording...");
-        MIC_StopRecording();
-        lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_LIGHT_BLUE, 2), 0);
-        delay(10);
-
-        // Copy filename for task
-        char* fname = (char*)pvPortMalloc(filename.length() + 1);
-        strcpy(fname, filename.c_str());
-
-        xTaskCreatePinnedToCore(
-            UploadFileTask,
-            "UploadFileTask",
-            8192,
-            fname,
-            1,
-            NULL,
-            1
-        );
-    }, LV_EVENT_RELEASED, NULL);
-
-    // --- STREAM button ---
-    lv_obj_t* stream_btn = lv_button_create(assistant_screen);
-    lv_obj_set_size(stream_btn, 120, 50);
-    lv_obj_align(stream_btn, LV_ALIGN_TOP_MID, 0, 20);
-    lv_obj_set_style_bg_color(stream_btn, lv_palette_main(LV_PALETTE_GREEN), 0);
-
-    lv_obj_t* stream_label = lv_label_create(stream_btn);
-    lv_label_set_text(stream_label, "STREAM");
-    lv_obj_center(stream_label);
-
-    lv_obj_add_event_cb(stream_btn, [](lv_event_t* e) {
         lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
         filename = generateRotatingFileName();
         Serial.printf("[STREAM] Start streaming: %s\n", filename.c_str());
@@ -75,11 +38,12 @@ void GUI_CreateAssistantScreen() {
         MIC_StartRecording(filename.c_str(), 16000, 1, 16, MIC_MODE_TO_AI_CLIENT);
     }, LV_EVENT_PRESSED, NULL);
 
-    lv_obj_add_event_cb(stream_btn, [](lv_event_t* e) {
+    // On release: stop and let the backend answer
+    lv_obj_add_event_cb(speak_btn, [](lv_event_t* e) {
         lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
         Serial.println("[STREAM] Stop streaming");
         MIC_StopRecording();
-        lv_obj_set_style_bg_color(btn, lv_palette_main(LV_PALETTE_GREEN), 0);
+        lv_obj_set_style_bg_color(btn, lv_palette_darken(LV_PALETTE_LIGHT_BLUE, 2), 0);
     }, LV_EVENT_RELEASED, NULL);
 
     // --- Back button ---
