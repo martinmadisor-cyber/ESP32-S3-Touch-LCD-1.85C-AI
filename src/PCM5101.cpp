@@ -10,6 +10,24 @@
 
 static uint8_t currentVolume = DEFAULT_VOLUME;
 
+// Kept at file scope so the volume can reach the codec from SetVolume() too,
+// not only while it is being initialised.
+static es8311_handle_t es = NULL;
+
+// The ES8311 takes 0..100 of its own analog range. Map the slider onto a band
+// that leaves headroom at the top, and mute outright at 0 — the codec has no
+// idea about the library's digital gain, so without this it keeps hissing.
+static void Codec_ApplyUserVolume() {
+  if (!es) return;
+  if (currentVolume == 0) {
+    es8311_voice_mute(es, true);
+    return;
+  }
+  es8311_voice_mute(es, false);
+  const int hw = 40 + (int)(currentVolume - 1) * (90 - 40) / (Volume_MAX - 1);
+  es8311_voice_volume_set(es, hw, NULL);
+}
+
 Audio audio;
 
 // Guard flag: prevents audio.loop() from running on a destroyed object
@@ -33,7 +51,6 @@ uint8_t LoadVolumeFromEEPROM() {
 bool Codec_Init(uint32_t sampleRate) {
   // Created once: re-creating it on every sample rate change leaked the handle
   // and eventually took the board down.
-  static es8311_handle_t es = NULL;
   if (!es) es = es8311_create(I2C_NUM_0, ES8311_ADDRRES_0);
   if (!es) {
     Serial.println("[ES8311] create failed");
@@ -52,9 +69,11 @@ bool Codec_Init(uint32_t sampleRate) {
     Serial.println("[ES8311] init failed");
     return false;
   }
-  // Near maximum: the box speaker is small and the assistant replies were
-  // still coming out quiet with 80.
-  es8311_voice_volume_set(es, 95, NULL);
+  // The codec used to be pinned near maximum here. That left the analog gain
+  // out of the user's reach: the slider only moves the library's digital gain,
+  // so at 0 the samples were silent but the amplifier still hissed at almost
+  // full volume, and every reply came out too loud. Follow the slider instead.
+  Codec_ApplyUserVolume();
   es8311_microphone_config(es, false);
 
   // Enable the speaker power amplifier.
@@ -147,7 +166,8 @@ void SetVolume(uint8_t vol) {
   }
 
   currentVolume = vol;
-  audio.setVolume(currentVolume); // 0...21    
+  audio.setVolume(currentVolume); // 0...21
+  Codec_ApplyUserVolume();        // the analog side, which the library never touches
   EEPROM.write(EEPROM_VOLUME_ADDR, currentVolume);
   EEPROM.commit();
 }
