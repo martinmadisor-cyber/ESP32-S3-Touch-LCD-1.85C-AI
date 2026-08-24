@@ -18,8 +18,5 @@ void AIAssistant_Stop();
 // void WebsocketServer_Loop();
 
 
-// HTTP communication
-void AIAssistant_UploadFile(const char* filepath);
-void UploadFileTask(void* param);
 
 #endif

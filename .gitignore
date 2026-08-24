@@ -60,3 +60,9 @@ backend/recordings/
 
 # Arduino Libraries
 Arduino/
+
+# Salida de trabajo local: monitor serie, log de compilacion y el archivo
+# que deja una redireccion a "nul" cuando se corre desde Git Bash.
+build.log
+logs/
+nul
