@@ -1,0 +1,176 @@
+diff --git a/src/Audio.cpp b/src/Audio.cpp
+index 36b0824..9d516f8 100644
+--- a/src/Audio.cpp
++++ b/src/Audio.cpp
+@@ -85,6 +85,9 @@ size_t AudioBuffer::getBufsize() {
+ 
+ size_t AudioBuffer::init() {
+     m_buffer.alloc(m_mainBuffSize + m_resBuffSize, "AudioBuffer");
++    // Start from silence. A short file never fills these 640 KB, and whatever
++    // was left in that memory got played as loud noise.
++    if (m_buffer.get()) memset(m_buffer.get(), 0, m_mainBuffSize + m_resBuffSize);
+     m_mutex = xSemaphoreCreateBinary();
+     xSemaphoreGive(m_mutex);
+     m_init = true;
+@@ -385,34 +388,41 @@ void StereoAudioEqualizer::updateSpectrum() {
+     if (!m_fft_ready) return;
+     m_fft_ready = false;
+ 
+-    // Window + copy
+-    for (int i = 0; i < FFT_SIZE; i++) { m_fft_work[i] = m_fft_in[i] * m_fft_window[i]; }
++    // Window + copy into the complex buffer: dsps_fft2r_fc32() expects
++    // interleaved re/im pairs, so a real signal needs a zero imaginary part.
++    for (int i = 0; i < FFT_SIZE; i++) {
++        m_fft_work[2 * i]     = m_fft_in[i] * m_fft_window[i];
++        m_fft_work[2 * i + 1] = 0.0f;
++    }
+ 
+     // FFT
+     dsps_fft2r_fc32(m_fft_work, FFT_SIZE);
+     dsps_bit_rev_fc32(m_fft_work, FFT_SIZE);
+     dsps_cplx2reC_fc32(m_fft_work, FFT_SIZE);
+ 
+-    float bass = 0, mid = 0, treble = 0;
++    // Upper edge of each band, matching the 60 / 250 / 1K / 4K / 8K / 16K
++    // labels drawn by the visualizer screen. The last band takes the rest.
++    static const float band_hz[FFT_BANDS] = {150.0f, 500.0f, 2000.0f, 6000.0f, 12000.0f, 0.0f};
++    float bands[FFT_BANDS] = {0};
+     float bin_hz = (float)m_items.sampleRate / FFT_SIZE;
+ 
+     for (int i = 1; i < FFT_SIZE / 2; i++) {
+ 
+-        float mag = fabsf(m_fft_work[i]);
++        // Magnitude of the complex bin, not just its real part.
++        float re = m_fft_work[2 * i];
++        float im = m_fft_work[2 * i + 1];
++        float mag = sqrtf(re * re + im * im);
+         float f = i * bin_hz;
+ 
+-        if (f < 200.0f)
+-            bass += mag;
+-        else if (f < 2000.0f)
+-            mid += mag;
+-        else
+-            treble += mag;
++        int b = FFT_BANDS - 1;
++        for (int k = 0; k < FFT_BANDS - 1; k++) {
++            if (f < band_hz[k]) { b = k; break; }
++        }
++        bands[b] += mag;
+     }
+ 
+     // log scale
+-    bass = log10f(bass + 1.0f);
+-    mid = log10f(mid + 1.0f);
+-    treble = log10f(treble + 1.0f);
++    for (int b = 0; b < FFT_BANDS; b++) bands[b] = log10f(bands[b] + 1.0f);
+ 
+     // smoothing
+     auto smooth = [](float old, float in) {
+@@ -421,11 +431,9 @@ void StereoAudioEqualizer::updateSpectrum() {
+         return (in > old) ? old + A * (in - old) : old + R * (in - old);
+     };
+ 
+-    m_spec_smooth[0] = smooth(m_spec_smooth[0], bass);
+-    m_spec_smooth[1] = smooth(m_spec_smooth[1], mid);
+-    m_spec_smooth[2] = smooth(m_spec_smooth[2], treble);
++    for (int b = 0; b < FFT_BANDS; b++) m_spec_smooth[b] = smooth(m_spec_smooth[b], bands[b]);
+ 
+-    // normalize → 0..255
++    // normalize -> 0..255
+     constexpr float SCALE = 85.0f; // empirisch gut
+ 
+     for (int i = 0; i < FFT_BANDS; i++) {
+@@ -627,11 +635,9 @@ void StereoAudioEqualizer::filter_block(float* block, int frames) {
+ #if CONFIG_IDF_TARGET_ESP32
+         dsps_biquad_sf32_ae32(block, block, frames, m_coeffs[f], m_state_biquad[f]);
+ #elif CONFIG_IDF_TARGET_ESP32S3
+-    #ifdef CONFIG_DSP_OPTIMIZED
+-        dsps_biquad_sf32_aes3(block, block, frames, m_coeffs[f], m_state_biquad[f]); // much faster
+-    #else
++    // dsps_biquad_sf32_aes3 not present in the esp-dsp build shipped with
++    // this arduino-esp32 framework release; use the portable ansi kernel.
+         dsps_biquad_sf32_ansi(block, block, frames, m_coeffs[f], m_state_biquad[f]);
+-    #endif
+ #elif CONFIG_IDF_TARGET_ESP32P4
+     #ifdef CONFIG_DSP_OPTIMIZED
+         dsps_biquad_sf32_arp4(block, block, frames, m_coeffs[f], m_state_biquad[f]); // much faster
+@@ -3738,6 +3744,7 @@ void IRAM_ATTR Audio::playChunk() {
+                 i2s_channel_disable(m_i2s_tx_handle);
+                 i2s_channel_reconfig_std_clock(m_i2s_tx_handle, &m_i2s_std_cfg.clk_cfg);
+                 i2s_channel_enable(m_i2s_tx_handle);
++                Audio_OnI2SRateChanged(48000);
+             }
+         }
+     }
+@@ -4553,7 +4560,15 @@ void Audio::processWebStream() {
+     }
+ 
+     // start audio decoding - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+-    if (InBuff.bufferFilled() * 2 > m_pwst.maxFrameSize && !m_f_stream) { // waiting for buffer filled
++    // Local change: this used to start on roughly one frame, leaving no cushion
++    // at all out of a 640 KB buffer, and internet radio broke up until the
++    // connection settled. The HLS path below already waits for 60000 bytes; ask
++    // for 16 KB here, which costs a fraction of a second before the first sound.
++    // A short file that never reaches 16 KB must still play, so a known
++    // audio length caps how much we are allowed to wait for.
++    uint32_t bytesBeforeStart = 16384;
++    if (m_audioDataSize && m_audioDataSize < bytesBeforeStart) bytesBeforeStart = m_audioDataSize;
++    if (InBuff.bufferFilled() >= bytesBeforeStart && !m_f_stream) { // waiting for buffer filled
+         info(*this, evt_info, "stream ready");
+         m_f_stream = true; // ready to play the audio data
+     }
+@@ -6440,6 +6455,11 @@ void Audio::setI2SCommFMT_LSB(bool commFMT) {
+     return;
+ }
+ // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
++// Some boards drive an external codec that must be told the sample rate over
++// I2C. It cannot guess it from the bus, so notify the sketch whenever the I2S
++// clock changes; a board without a codec simply leaves this unimplemented.
++extern "C" void __attribute__((weak)) Audio_OnI2SRateChanged(uint32_t rate) { (void)rate; }
++
+ void Audio::reconfigI2S() {
+ 
+     i2s_channel_disable(m_i2s_tx_handle);
+@@ -6465,6 +6485,11 @@ void Audio::reconfigI2S() {
+     m_i2s_std_cfg.clk_cfg.sample_rate_hz = m_audio_items.sampleRate;
+     i2s_channel_reconfig_std_clock(m_i2s_tx_handle, &m_i2s_std_cfg.clk_cfg);
+     i2s_channel_enable(m_i2s_tx_handle);
++    if (m_audio_items.bitsPerSample != 8 && m_audio_items.bitsPerSample != 16) {
++        // 8 and 16 bit streams get resampled to 48 kHz further down, so their
++        // final clock is decided there, not here.
++        Audio_OnI2SRateChanged(m_i2s_std_cfg.clk_cfg.sample_rate_hz);
++    }
+ }
+ // —————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+ uint8_t* Audio::getSpectrum() {
+diff --git a/src/Audio.h b/src/Audio.h
+index 379a145..51c114d 100644
+--- a/src/Audio.h
++++ b/src/Audio.h
+@@ -113,10 +113,10 @@ class StereoAudioEqualizer {
+     float                   m_state_biquad[3][4] = {0};
+ 
+   private: // ---------- FFT section -----------
+-#define FFT_SIZE  256
+-#define FFT_BANDS 3
++#define FFT_SIZE  512
++#define FFT_BANDS 6
+     float    m_fft_in[FFT_SIZE];             // FFT buffers
+-    float    m_fft_work[FFT_SIZE];           // FFT buffers
++    float    m_fft_work[FFT_SIZE * 2];       // FFT buffers (complex: re, im per bin)
+     float    m_fft_window[FFT_SIZE];         // FFT buffers
+     uint16_t m_fft_pos = 0;                  // FFT state
+     bool     m_fft_ready = false;            // FFT state
+@@ -439,7 +439,10 @@ class Audio {
+     uint8_t        m_audioTaskCoreId = 0;
+     uint8_t        m_M4A_objectType = 0; // set in read_M4A_Header
+     uint8_t        m_M4A_chConfig = 0;   // set in read_M4A_Header
+-    uint8_t        m_spectrum[3] = {0};  // spectrum analyzer
++    // FFT_BANDS, not 3: the analyser fills six bands and getSpectrum() copies
++    // sizeof(m_spectrum) of them, so the last three were never copied and every
++    // caller read them off the end of the array, out of neighbouring members.
++    uint8_t        m_spectrum[FFT_BANDS] = {0};  // spectrum analyzer
+     uint16_t       m_M4A_sampleRate = 0; // set in read_M4A_Header
+     int16_t        m_validSamples = 0;
+     int16_t        m_curSample = 0;
