@@ -66,3 +66,8 @@ Arduino/
 build.log
 logs/
 nul
+
+# Los audios generados y el entorno local del backend de voz
+voice-backend/speech/
+voice-backend/*.log
+.env

@@ -1,0 +1,7 @@
+aiohttp
+faster-whisper
+kokoro
+numpy
+requests
+soundfile
+websockets
