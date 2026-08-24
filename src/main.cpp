@@ -514,6 +514,9 @@ void loop() {
     // audio task cannot safely use the I2C bus.
     Codec_ApplyPendingRate();
 
+    // Play the assistant reply here: the WebSocket task has no stack for it.
+    AIAssistant_PlayPending();
+
     // Check if the backlight should be turned off
     if (digitalRead(BUTTON_PIN) == LOW && !backlightAlreadyOff) {
         backlightAlreadyOff = true;

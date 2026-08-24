@@ -52,7 +52,9 @@ bool Codec_Init(uint32_t sampleRate) {
     Serial.println("[ES8311] init failed");
     return false;
   }
-  es8311_voice_volume_set(es, 80, NULL);
+  // Near maximum: the box speaker is small and the assistant replies were
+  // still coming out quiet with 80.
+  es8311_voice_volume_set(es, 95, NULL);
   es8311_microphone_config(es, false);
 
   // Enable the speaker power amplifier.

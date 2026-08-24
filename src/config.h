@@ -5,6 +5,10 @@
 #define BUTTON_PIN 0  // GPIO0
 
 // WiFi credentials
+// Voice assistant backend. The build can override it with the WEBSOCKET_URL
+// environment variable; this is what gets used when that is empty.
+#define ASSISTANT_WS_URL_FALLBACK "ws://192.168.1.104:8771"
+
 #define WIFI_SSID     ENV_WIFI_SSID
 #define WIFI_PASSWORD ENV_WIFI_PASSWORD
 

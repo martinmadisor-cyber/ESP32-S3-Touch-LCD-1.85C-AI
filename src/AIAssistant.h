@@ -13,6 +13,7 @@ void AIAssistant_Init(Audio& audio);
 void AIAssistant_StartStream();
 void AIAssistant_SendAudioChunk(const void* buffer, size_t byteCount);
 void AIAssistant_StopStream();
+void AIAssistant_PlayPending();
 void AIAssistant_Stop();
 // void WebsocketServer_Loop();
 
